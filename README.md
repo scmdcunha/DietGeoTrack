@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-- **Input**: FASTA sequences (~5000) obtained through NGS of bat guano samples. These sequences were provided externally and likely generated via metabarcoding (the lab work was not performed in this project).
+- **Input**: FASTA sequences (~5700) obtained through NGS of bat guano samples. These sequences were provided externally and likely generated via metabarcoding (the lab work was not performed in this project).
 - **Reference database**: Arthropod COI gene sequences downloaded from the NCBI database using:
     ```
     arthropoda[organism] AND COI[gene]

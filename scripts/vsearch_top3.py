@@ -13,7 +13,7 @@ OUTPUT = os.path.join(OUTPUT_DIR, "top3_hits.tsv")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Read VSEARCH results (no header)
-colnames = ["query", "target", "pident", "length", "mismatch", "gapopen", "qstart", "qend" , "qend", "sstart", "send", "evalue", "bitscore"
+colnames = ["query", "target", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"
 ]
 
 df = pd.read_csv(INPUT, sep='\t', header=None, names=colnames)

@@ -25,7 +25,14 @@ rule make_blast_db:
 rule run_blast:
     input:
         query=SAMPLES,
-        db=BLAST_DB
+        db_nin="data/arthropoda.blastdb.nin",
+        db_nsq="data/arthropoda.blastdb.nsq",
+        db_nhr="data/arthropoda.blastdb.nhr",
+        db_ndb="data/arthropoda.blastdb.ndb",
+        db_njs="data/arthropoda.blastdb.njs",
+        db_ntf="data/arthropoda.blastdb.ntf",
+        db_not="data/arthropoda.blastdb.not",
+        db_nto="data/arthropoda.blastdb.nto"
     output:
         "results/blast/arthropoda.blast.tsv"
     params:

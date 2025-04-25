@@ -6,7 +6,9 @@ BLAST_DB_PREFIX = "data/arthropoda.blastdb"
 
 rule all:
     input:
-        "results/blast/arthropoda.blast.tsv"
+        "results/blast/arthropoda.blast.tsv",
+        "results/blast/arthropoda.blast.top3.tsv"
+
 
 rule make_blast_db:
     input:
@@ -38,4 +40,13 @@ rule run_blast:
             -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" \
             -perc_identity {params.perc_identity} \
             -num_threads {threads}
+        """
+rule filter_top3_blast_hits:
+    input:
+        "results/blast/arthropoda.blast.tsv"
+    output:
+        "results/blast/arthropoda.blast.top3.tsv"
+    shell:
+        """
+        python3 scripts/blast_top3_hits.py {input} {output}
         """

@@ -5,61 +5,66 @@ import time
 # Set email for NCBI API
 Entrez.email = ""
 
+# Function to read accession IDs from a file
 def read_ids(file_path):
-    """
-    Reads accession IDs from a specified file and returns them as a list.
-
-    Args:
-        file_path (str): The path to the file containing the accession IDs.
-
-    Returns:
-        list: A list of accession IDs as strings.
-
-    Example:
-        ids = read_ids("results/blast/arthropoda.blast.top3.unique.ids.txt")
-    """
+    """Read accession IDs from a file."""
     with open(file_path, 'r') as file:
         ids = [line.strip() for line in file if line.strip()]
     return ids
 
 def fetch_taxonomy(accession_id):
     """
-    Fetches the taxonomy information (organism name) for a given accession ID from the NCBI database.
+    Fetches the taxonomy information for a given accession ID from the NCBI database.
 
     Args:
         accession_id (str): The accession ID to fetch taxonomy information for.
 
     Returns:
-        str: The organism name, or "Unknown" if no organism is found.
-
-    Example:
-        organism = fetch_taxonomy("AB007981.1")
+        dict: A dictionary with taxonomic information, including order, family, genus, species, etc.
+        or None if no data is found.
     """
     try:
         handle = Entrez.efetch(db="nucleotide", id=accession_id, rettype="gb", retmode="text")
         record = SeqIO.read(handle, "genbank")
         handle.close()
 
-        organism = record.annotations.get("organism", "Unknown")
-        return organism
+        # Fetching the taxonomy data from the annotations
+        taxonomy = record.annotations.get("taxonomy", [])
+
+        # Ensure taxonomy has all levels (fill with "Unknown" if not available)
+        taxonomy_info = {
+            "Accession ID": accession_id,
+            "Domain": taxonomy[0] if len(taxonomy) > 0 else "Unknown",
+            "Phylum": taxonomy[1] if len(taxonomy) > 1 else "Unknown",
+            "Class": taxonomy[2] if len(taxonomy) > 2 else "Unknown",
+            "Order": taxonomy[3] if len(taxonomy) > 3 else "Unknown",
+            "Family": taxonomy[4] if len(taxonomy) > 4 else "Unknown",
+            "Genus": taxonomy[5] if len(taxonomy) > 5 else "Unknown",
+            "Species": taxonomy[6] if len(taxonomy) > 6 else "Unknown"
+        }
+
+        return taxonomy_info
 
     except Exception as e:
         print(f"Error fetching ID {accession_id}: {e}")
-        return "Error"
+        return None
 
 def save_to_csv(results, output_file):
     """
-    Saves the list of results (accession ID and organism) to a CSV file.
+    Saves the list of results (taxonomic information) to a CSV file.
 
     Args:
-        results (list): A list of dictionaries with "Accession ID" and "Organism".
+        results (list): A list of dictionaries containing taxonomic information.
         output_file (str): The path to the output CSV file.
-
-    Example:
-        save_to_csv(results, "results/blast/arthropoda_top3_taxonomy.csv")
     """
     with open(output_file, 'a', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=["Accession ID", "Organism"])
+        fieldnames = ["Accession ID", "Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        # If file is empty, write the header first
+        if csvfile.tell() == 0:
+            writer.writeheader()
+
         writer.writerows(results)
 
 if __name__ == "__main__":
@@ -71,17 +76,15 @@ if __name__ == "__main__":
     results = []
 
     for i, accession_id in enumerate(ids, start=1):
-        organism = fetch_taxonomy(accession_id)
-        print(f"{accession_id}: {organism}")
+        taxonomy_info = fetch_taxonomy(accession_id)
+        if taxonomy_info:
+            print(f"{accession_id}: {taxonomy_info['Species']}")
 
-        results.append({
-            "Accession ID": accession_id,
-            "Organism": organism
-        })
+            results.append(taxonomy_info)
 
         # Every batch_size IDs, save to CSV
         if i % batch_size == 0 or i == len(ids):  # Last batch
-            save_to_csv(results, "results/blast/arthropoda_top3_taxonomy.csv")
+            save_to_csv(results, "results/blast/arthropoda_taxonomy.csv")
             results = []  # Clear results for the next batch
 
         # Pause to avoid rate limit

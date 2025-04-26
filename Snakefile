@@ -7,7 +7,8 @@ BLAST_DB_PREFIX = "data/arthropoda.blastdb"
 rule all:
     input:
         "results/blast/arthropoda.blast.tsv",
-        "results/blast/arthropoda.blast.top3.tsv"
+        "results/blast/arthropoda.blast.top3.tsv",
+        "results/blast/arthropoda.blast.top3.unique.ids.txt"
 
 
 rule make_blast_db:
@@ -49,4 +50,13 @@ rule filter_top3_blast_hits:
     shell:
         """
         python3 scripts/blast_top3_hits.py {input} {output}
+        """
+rule extract_unique_ids:
+    input:
+        "results/blast/arthropoda.blast.top3.tsv"
+    output:
+        "results/blast/arthropoda.blast.top3.unique.ids.txt"
+    shell:
+        """
+            cut -f2 {input} | sort | uniq > {output}
         """

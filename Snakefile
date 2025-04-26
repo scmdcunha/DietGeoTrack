@@ -8,7 +8,8 @@ rule all:
     input:
         "results/blast/arthropoda.blast.tsv",
         "results/blast/arthropoda.blast.top3.tsv",
-        "results/blast/arthropoda.blast.top3.unique.ids.txt"
+        "results/blast/arthropoda.blast.top3.unique.ids.txt",
+        "results/vsearch/arthropoda.vsearch.tsv"
 
 
 rule make_blast_db:
@@ -59,4 +60,24 @@ rule extract_unique_ids:
     shell:
         """
             cut -f2 {input} | sort | uniq > {output}
+        """
+rule run_vsearch:
+    input:
+        query=SAMPLES,
+        db=REFERENCE
+    output:
+        "results/vsearch/arthropoda.vsearch.tsv"
+    params:
+        evalue=1e-5,
+        identity=95
+    threads: 4
+    shell:
+        """
+        vsearch --usearch_global {input.query} \
+             --db {input.db} \
+             --id {params.identity} \
+             --evalue {params.evalue} \
+             --threads {threads} \
+             --userout {output} \
+             --userfields query+target+id+length+mismatch+gapopen+sstart+send+evalue+bitscore
         """

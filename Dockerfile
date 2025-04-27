@@ -9,7 +9,8 @@ RUN micromamba create -n metabarcoding -y \
     vsearch=2.30.0 \
     blast=2.16.0 \
     pandas=2.2.3 \
-    gdal=3.7.2
+    gdal=3.7.2 \
+    biopython=1.85
 
 # Activates the environment
 ENV PATH=/opt/conda/envs/metabarcoding/bin:$PATH

@@ -73,9 +73,8 @@ rule run_vsearch:
     shell:
         """
         vsearch --usearch_global {input.query} \
-             --db {input.db} \
-             --id {params.identity} \
-             --threads {threads} \
-             --userout {output} \
-             --userfields query+target+id+length+mismatch+gapopen+sstart+send+bitscore
+                --db {input.db} \
+                --id {params.identity} \
+                --blast6out {output} \
+                --threads {threads}
         """

@@ -78,12 +78,22 @@ rule run_vsearch:
                 --blast6out {output} \
                 --threads {threads}
         """
-        rule filter_top3_vsearch_hits:
-            input:
-                "results/vsearch/arthropoda.vsearch.tsv"
-            output:
-                "results/vsearch/arthropoda.vsearch.top3.tsv"
-            shell:
-                """
-                python3 scripts/vsearch_top3_hits.py {input} {output}
-                """
+rule filter_top3_vsearch_hits:
+    input:
+        "results/vsearch/arthropoda.vsearch.tsv"
+    output:
+        "results/vsearch/arthropoda.vsearch.top3.tsv"
+    shell:
+        """
+        python3 scripts/vsearch_top3_hits.py {input} {output}
+        """
+
+rule extract_vsearch_unique_ids:
+    input:
+        "results/vsearch/arthropoda.vsearch.top3.tsv"
+    output:
+        "results/vsearch/arthropoda.vsearch.top3.unique.ids.txt"
+    shell:
+        """
+            cut -f2 {input} | sort | uniq > {output}
+        """

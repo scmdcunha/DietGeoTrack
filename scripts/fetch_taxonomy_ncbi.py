@@ -3,7 +3,7 @@ import csv
 import time
 
 # Set email for NCBI API
-Entrez.email = ""
+Entrez.email = "saracmc21@gmail.com"
 
 # Function to read accession IDs from a file
 def read_ids(file_path):
@@ -41,8 +41,9 @@ def fetch_taxonomy(accession_id):
             "Family": taxonomy[4] if len(taxonomy) > 4 else "Unknown",
             "Genus": taxonomy[5] if len(taxonomy) > 5 else "Unknown",
             "Species": taxonomy[6] if len(taxonomy) > 6 else "Unknown"
-        }
+            }
 
+        print(f"Taxonomy for {accession_id}: {taxonomy_info}")
         return taxonomy_info
 
     except Exception as e:

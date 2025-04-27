@@ -52,7 +52,7 @@ rule filter_top3_blast_hits:
         """
         python3 scripts/blast_top3_hits.py {input} {output}
         """
-rule extract_unique_ids:
+rule extract_blast_unique_ids:
     input:
         "results/blast/arthropoda.blast.top3.tsv"
     output:
@@ -78,3 +78,12 @@ rule run_vsearch:
                 --blast6out {output} \
                 --threads {threads}
         """
+        rule filter_top3_vsearch_hits:
+            input:
+                "results/vsearch/arthropoda.vsearch.tsv"
+            output:
+                "results/vsearch/arthropoda.vsearch.top3.tsv"
+            shell:
+                """
+                python3 scripts/vsearch_top3_hits.py {input} {output}
+                """

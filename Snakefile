@@ -68,16 +68,14 @@ rule run_vsearch:
     output:
         "results/vsearch/arthropoda.vsearch.tsv"
     params:
-        evalue=1e-5,
-        identity=95
+        identity=0.95
     threads: 4
     shell:
         """
         vsearch --usearch_global {input.query} \
              --db {input.db} \
              --id {params.identity} \
-             --evalue {params.evalue} \
              --threads {threads} \
              --userout {output} \
-             --userfields query+target+id+length+mismatch+gapopen+sstart+send+evalue+bitscore
+             --userfields query+target+id+length+mismatch+gapopen+sstart+send+bitscore
         """

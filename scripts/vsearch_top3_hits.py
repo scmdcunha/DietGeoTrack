@@ -5,7 +5,7 @@
 import os
 import pandas as pd
 
-INPUT = "results/vsearch/results.tsv"
+INPUT = "results/vsearch/arthropoda.vsearch.tsv"
 OUTPUT_DIR = "results/vsearch/filtered"
 OUTPUT = os.path.join(OUTPUT_DIR, "top3_hits.tsv")
 

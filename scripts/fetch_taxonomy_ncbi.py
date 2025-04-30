@@ -1,11 +1,16 @@
 from Bio import Entrez, SeqIO
+from ete3 import NCBITaxa
+import pandas as pd
+from pathlib import Path
 import csv
 import time
 
 # Set email for NCBI API
 Entrez.email = "saracmc21@gmail.com"
 
-# Function to read accession IDs from a file
+# Initialize NCBI Taxa
+ncbi = NCBITaxa()
+
 def read_ids(file_path):
     """Read accession IDs from a file."""
     with open(file_path, 'r') as file:
@@ -28,25 +33,30 @@ def fetch_taxonomy(accession_id):
         record = SeqIO.read(handle, "genbank")
         handle.close()
 
-        # Fetching the taxonomy data from the annotations
-        taxonomy = record.annotations.get("taxonomy", [])
         organism = record.annotations.get("organism", "Unknown")
+        if organism == "Unknown":
+            return None
 
-        # Ensure taxonomy has all levels (fill with "Unknown" if not available)
-        order = taxonomy[6] if len(taxonomy) > 6 else "Unknown"
-        family = taxonomy[7] if len(taxonomy) > 7 else "Unknown"
-        genus = taxonomy[8] if len(taxonomy) > 8 else "Unknown"
+        # Get TaxID with ete3
+        name_to_taxid = ncbi.get_name_translator([organism])
+        if organism not in name_to_taxid:
+            return None
 
-        taxonomy_info = {
-            "Accession ID": accession_id,
-            "Order": order,
-            "Family": family,
-            "Genus": genus,
-            "Species": organism
-        }
+        taxid = name_to_taxid[organism][0]
+        lineage = ncbi.get_lineage(taxid)
+        names = ncbi.get_taxid_translator(lineage)
+        ranks = ncbi.get_rank(lineage)
 
-        print(f"Taxonomy for {accession_id}: {taxonomy_info}")
-        return taxonomy_info
+        taxonomy = {"Accession ID": accession_id}
+        for taxid in lineage:
+            rank = ranks[taxid]
+            if rank in ["order", "family", "genus"]:
+                taxonomy[rank.capitalize()] = names[taxid]
+
+        taxonomy["Species"] = organism
+
+        print(f"Taxonomy for {accession_id}: {taxonomy}")
+        return taxonomy
 
     except Exception as e:
         print(f"Error fetching ID {accession_id}: {e}")
@@ -88,8 +98,7 @@ if __name__ == "__main__":
         # Every batch_size IDs, save to CSV
         if i % batch_size == 0 or i == len(ids):  # Last batch
             save_to_csv(results, "results/blast/arthropoda_taxonomy.csv")
-            results = []  # Clear results for the next batch
-
+            results = []
         # Pause to avoid rate limit
         time.sleep(0.34)
 

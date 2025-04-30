@@ -30,18 +30,20 @@ def fetch_taxonomy(accession_id):
 
         # Fetching the taxonomy data from the annotations
         taxonomy = record.annotations.get("taxonomy", [])
+        organism = record.annotations.get("organism", "Unknown")
 
         # Ensure taxonomy has all levels (fill with "Unknown" if not available)
+        order = taxonomy[6] if len(taxonomy) > 6 else "Unknown"
+        family = taxonomy[7] if len(taxonomy) > 7 else "Unknown"
+        genus = taxonomy[8] if len(taxonomy) > 8 else "Unknown"
+
         taxonomy_info = {
             "Accession ID": accession_id,
-            "Domain": taxonomy[0] if len(taxonomy) > 0 else "Unknown",
-            "Phylum": taxonomy[1] if len(taxonomy) > 1 else "Unknown",
-            "Class": taxonomy[2] if len(taxonomy) > 2 else "Unknown",
-            "Order": taxonomy[3] if len(taxonomy) > 3 else "Unknown",
-            "Family": taxonomy[4] if len(taxonomy) > 4 else "Unknown",
-            "Genus": taxonomy[5] if len(taxonomy) > 5 else "Unknown",
-            "Species": taxonomy[6] if len(taxonomy) > 6 else "Unknown"
-            }
+            "Order": order,
+            "Family": family,
+            "Genus": genus,
+            "Species": organism
+        }
 
         print(f"Taxonomy for {accession_id}: {taxonomy_info}")
         return taxonomy_info
@@ -59,7 +61,7 @@ def save_to_csv(results, output_file):
         output_file (str): The path to the output CSV file.
     """
     with open(output_file, 'a', newline='') as csvfile:
-        fieldnames = ["Accession ID", "Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"]
+        fieldnames = ["Accession ID", "Order", "Family", "Genus", "Species"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         # If file is empty, write the header first

@@ -4,6 +4,8 @@ import pandas as pd
 from pathlib import Path
 import csv
 import time
+import argparse
+import sys
 
 # Set email for NCBI API
 Entrez.email = "saracmc21@gmail.com"
@@ -19,14 +21,7 @@ def read_ids(file_path):
 
 def fetch_taxonomy(accession_id):
     """
-    Fetches the taxonomy information for a given accession ID from the NCBI database.
-
-    Args:
-        accession_id (str): The accession ID to fetch taxonomy information for.
-
-    Returns:
-        dict: A dictionary with taxonomic information, including order, family, genus, species, etc.
-        or None if no data is found.
+    Fetches taxonomy for a given accession ID from NCBI and returns a dictionary.
     """
     try:
         handle = Entrez.efetch(db="nucleotide", id=accession_id, rettype="gb", retmode="text")
@@ -48,58 +43,59 @@ def fetch_taxonomy(accession_id):
         ranks = ncbi.get_rank(lineage)
 
         taxonomy = {"Accession ID": accession_id}
+        # Add ranks if they exist
         for taxid in lineage:
-            rank = ranks[taxid]
+            rank = ranks.get(taxid)
             if rank in ["order", "family", "genus"]:
-                taxonomy[rank.capitalize()] = names[taxid]
+                taxonomy[rank.capitalize()] = names.get(taxid, "NA")
 
         taxonomy["Species"] = organism
-
-        print(f"Taxonomy for {accession_id}: {taxonomy}")
         return taxonomy
 
     except Exception as e:
-        print(f"Error fetching ID {accession_id}: {e}")
+        print(f"[{accession_id}] Error: {type(e).__name__} - {e}")
         return None
 
 def save_to_csv(results, output_file):
-    """
-    Saves the list of results (taxonomic information) to a CSV file.
-
-    Args:
-        results (list): A list of dictionaries containing taxonomic information.
-        output_file (str): The path to the output CSV file.
-    """
+    """Saves list of taxonomy dicts to CSV."""
     with open(output_file, 'a', newline='') as csvfile:
         fieldnames = ["Accession ID", "Order", "Family", "Genus", "Species"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-        # If file is empty, write the header first
         if csvfile.tell() == 0:
             writer.writeheader()
 
         writer.writerows(results)
 
-if __name__ == "__main__":
-    ids = read_ids("results/blast/arthropoda.blast.top3.unique.ids.txt")
+def main(input_file, output_file):
+    ids = read_ids(input_file)
     print(f"Fetched {len(ids)} accession IDs.")
 
-    # Define batch size (100 IDs per batch)
     batch_size = 100
     results = []
+    failed_ids_path = Path(output_file).with_name("failed_ids.txt")
 
     for i, accession_id in enumerate(ids, start=1):
         taxonomy_info = fetch_taxonomy(accession_id)
         if taxonomy_info:
-            print(f"{accession_id}: {taxonomy_info['Species']}")
-
+            print(f"{accession_id}: {taxonomy_info.get('Species', 'Unknown')}")
             results.append(taxonomy_info)
+        else:
+            with open(failed_ids_path, 'a') as fail_log:
+                fail_log.write(accession_id + "\n")
 
-        # Every batch_size IDs, save to CSV
-        if i % batch_size == 0 or i == len(ids):  # Last batch
-            save_to_csv(results, "results/blast/arthropoda_taxonomy.csv")
+        if i % batch_size == 0 or i == len(ids):
+            save_to_csv(results, output_file)
             results = []
-        # Pause to avoid rate limit
-        time.sleep(0.34)
+
+        time.sleep(0.34)  # prevent rate-limiting
 
     print("Process completed.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fetch taxonomy from NCBI for accession IDs.")
+    parser.add_argument("--input", required=True, help="Path to input file with accession IDs")
+    parser.add_argument("--output", required=True, help="Path to output CSV file")
+
+    args = parser.parse_args()
+    main(args.input, args.output)

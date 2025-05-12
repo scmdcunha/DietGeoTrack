@@ -68,41 +68,58 @@ def clean_species_name(species_name):
 # Function to fetch speciesKey from GBIF using the species name
 def get_species_key(species_name):
     """
-    Retrieve the GBIF speciesKey for a given species name using the GBIF species match API.
+    Tries to retrieve the GBIF speciesKey using the full cleaned name,
+    and falls back to a simpler version if the match fails.
 
     Parameters:
-        species_name (str): The scientific name of the species.
+        species_name (str): The original species name from input data.
 
     Returns:
-        int or None: The speciesKey if found, otherwise None.
+        int or None: The GBIF speciesKey, or None if not found.
     """
-    species_name = clean_species_name(species_name)
-    url = "https://api.gbif.org/v1/species/match"
-    params = {"name": species_name}
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("usageKey")
-    except Exception as e:
-        print(f"  Error fetching speciesKey for {species_name}: {e}")
+    def fetch_key(name):
+        """Helper function to request speciesKey from GBIF API."""
+        try:
+            response = requests.get("https://api.gbif.org/v1/species/match", params={"name": name}, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("matchType") != "NONE" and data.get("usageKey"):
+                return data.get("usageKey")
+        except Exception as e:
+            print(f"  Error fetching speciesKey for '{name}': {e}")
         return None
+
+    cleaned_name = clean_species_name(species_name)
+    key = fetch_key(cleaned_name)
+
+    if not key:
+        # Fallback: Try only the first two words (Genus + Species)
+        fallback_name = ' '.join(cleaned_name.strip().split()[:2])
+        if fallback_name != cleaned_name:
+            print(f"  '{cleaned_name}' → trying fallback '{fallback_name}'")
+            key = fetch_key(fallback_name)
+
+    if not key:
+        print(f"speciesKey not found for '{species_name}'")
+
+    return key
 
 # Function to fetch the nearest occurrence of a species from GBIF
 def fetch_nearest_occurrence(species_name):
     """
-    Retrieve the nearest occurrence (with coordinates) of a species from GBIF and compute its distance
-    to Manteigas (Serra da Estrela).
+    Fetches the nearest occurrence with coordinates for a species from GBIF,
+    and computes the distance to Serra da Estrela.
 
     Parameters:
-        species_name (str): The scientific name of the species.
+        species_name (str): The full species name to search for.
 
     Returns:
-        list or None: List with species name, latitude, longitude, date, country, occurrenceID, and distance (km),
-                      or None if no occurrence is found or an error occurs.
+        list or None: A list containing [Species, Lat, Lon, Date, Country, ID, Distance],
+                      or None if no valid occurrence is found.
     """
     species_key = get_species_key(species_name)
     if not species_key:
+        print(f"Skipping {species_name} due to missing speciesKey.")
         return None
 
     url = "https://api.gbif.org/v1/occurrence/search"
@@ -111,25 +128,25 @@ def fetch_nearest_occurrence(species_name):
         "hasCoordinate": "true",
         "limit": 300
     }
+
     try:
         response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         occurrences = data.get("results", [])
-        print(f"Species: {species_name}, Occurrences found: {len(occurrences)}")
+        print(f"{species_name}: {len(occurrences)} occurrences found.")
 
-        if len(occurrences) == 0:
-                    print(f"  No occurrences found for {species_name}")
-                    return None
-
+        if not occurrences:
+            print(f"No occurrences with coordinates for {species_name}")
+            return None
 
         nearest = None
         min_distance = float("inf")
 
-        # Loop through occurrences and calculate distances
         for occ in occurrences:
             lat = occ.get("decimalLatitude")
             lon = occ.get("decimalLongitude")
+
             if lat is not None and lon is not None:
                 distance = haversine(latitude, longitude, lat, lon)
                 if distance < min_distance:
@@ -144,10 +161,14 @@ def fetch_nearest_occurrence(species_name):
                         round(distance, 2)
                     ]
 
-        return nearest
+        if nearest:
+            return nearest
+        else:
+            print(f"No valid coordinates found in occurrences for {species_name}")
+            return None
 
     except Exception as e:
-        print(f"  Error fetching occurrences for {species_name}: {e}")
+        print(f"Error fetching occurrences for {species_name}: {e}")
         return None
 
 def main():
@@ -159,14 +180,21 @@ def main():
     """
     input_file = "results/blast/ncbi_taxonomy_lookup.csv"
     output_file = "results/blast/gbif_occurrences_nearest.csv"
+    failed_file = "results/blast/gbif_species_failed.csv"
 
+    # Read and clean species list
     df_species = pd.read_csv(input_file)
     species_list = [clean_species_name(s) for s in df_species["Species"].dropna().unique()]
+
+    # Prepare CSV output
     with open(output_file, "w", newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
 
     results = []
+    failed_species = []
+
+    # Fetch occurrences in parallel
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_species = {
             executor.submit(fetch_nearest_occurrence, species): species
@@ -180,15 +208,27 @@ def main():
                 if result:
                     results.append(result)
                     print(f"[{i+1}/{len(species_list)}] {species} → {result[-1]} km")
+                else:
+                    failed_species.append(species)
             except Exception as e:
-                print(f"  Failed for {species}: {e}")
-            sleep(0.1)  # Small delay to avoid rate limits
+                print(f"[{i+1}/{len(species_list)}] {species}: {e}")
+                failed_species.append(species)
+            sleep(0.1)  # Small delay to avoid rate-limiting
 
+    # Write successful results
     with open(output_file, "a", newline='') as file:
         writer = csv.writer(file)
         writer.writerows(results)
 
-    print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
+    # Write failed species to a separate CSV
+    if failed_species:
+        with open(failed_file, "w", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Species"])
+            for s in failed_species:
+                writer.writerow([s])
+        print(f"\n {len(failed_species)} species had no valid GBIF occurrences. Saved to: {failed_file}")
+    else:
+        print("\nAll species returned valid occurrences.")
 
-if __name__ == "__main__":
-    main()
+    print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")

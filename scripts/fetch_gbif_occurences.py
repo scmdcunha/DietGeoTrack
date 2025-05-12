@@ -60,9 +60,15 @@ def clean_species_name(species_name):
     """
     # Remove 'sp.', 'cf.', 'aff.', 'nr.' (case insensitive)
     species_name = re.sub(r'\b(sp|cf|aff|nr)\.?\b', '', species_name, flags=re.IGNORECASE)
+    species_name = re.sub(r'\.+', '', species_name)
+    species_name = re.sub(r'\s+', ' ', species_name).strip()
+
     # Reduce to a maximum of two terms (Genus + Species)
-    name = ' '.join(species_name.strip().split()[:2])
-    return name.strip()
+    parts = species_name.split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[1]}"
+    else:
+        return None
 
 
 # Function to fetch speciesKey from GBIF using the species name
@@ -118,16 +124,19 @@ def fetch_nearest_occurrence(species_name):
                       or None if no valid occurrence is found.
     """
     species_key = get_species_key(species_name)
-    if not species_key:
-        print(f"Skipping {species_name} due to missing speciesKey.")
-        return None
-
+    if species_key:
+        params = {
+            "speciesKey": species_key,
+            "hasCoordinate": "true",
+            "limit": 300
+        }
+    else:
+        print(f"No speciesKey for '{species_name}', trying fallback with scientificName.")
+        params = {
+            "scientificName": species_name.strip(),
+            "hasCoordinate": "true",
+        }
     url = "https://api.gbif.org/v1/occurrence/search"
-    params = {
-        "speciesKey": species_key,
-        "hasCoordinate": "true",
-        "limit": 300
-    }
 
     try:
         response = requests.get(url, params=params, timeout=15)
@@ -176,25 +185,31 @@ def main():
     Main execution function:
     - Reads species list from CSV.
     - Fetches nearest GBIF occurrence for each species using parallel threads.
-    - Saves the results to a new CSV file.
+    - Saves the results to a CSV file.
+    - Logs species with no valid occurrences to a separate CSV file.
     """
     input_file = "results/blast/ncbi_taxonomy_lookup.csv"
     output_file = "results/blast/gbif_occurrences_nearest.csv"
-    failed_file = "results/blast/gbif_species_failed.csv"
+    failed_file = "results/blast/failed_species.csv"
 
-    # Read and clean species list
     df_species = pd.read_csv(input_file)
-    species_list = [clean_species_name(s) for s in df_species["Species"].dropna().unique()]
+    species_list = [
+        name for s in df_species["Species"].dropna().unique()
+        if (name := clean_species_name(s)) is not None
+    ]
 
-    # Prepare CSV output
+    # Initialize output files with headers
     with open(output_file, "w", newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
 
+    with open(failed_file, "w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Species"])
+
     results = []
     failed_species = []
 
-    # Fetch occurrences in parallel
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_species = {
             executor.submit(fetch_nearest_occurrence, species): species
@@ -209,26 +224,24 @@ def main():
                     results.append(result)
                     print(f"[{i+1}/{len(species_list)}] {species} → {result[-1]} km")
                 else:
-                    failed_species.append(species)
+                    failed_species.append([species])
             except Exception as e:
-                print(f"[{i+1}/{len(species_list)}] {species}: {e}")
-                failed_species.append(species)
-            sleep(0.1)  # Small delay to avoid rate-limiting
+                print(f"  Failed for {species}: {e}")
+                failed_species.append([species])
+            sleep(0.1)  # Small delay to avoid rate limits
 
-    # Write successful results
+    # Write successful occurrences
     with open(output_file, "a", newline='') as file:
         writer = csv.writer(file)
         writer.writerows(results)
 
-    # Write failed species to a separate CSV
-    if failed_species:
-        with open(failed_file, "w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Species"])
-            for s in failed_species:
-                writer.writerow([s])
-        print(f"\n {len(failed_species)} species had no valid GBIF occurrences. Saved to: {failed_file}")
-    else:
-        print("\nAll species returned valid occurrences.")
+    # Write failed species
+    with open(failed_file, "a", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(failed_species)
 
     print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
+    print(f"Logged {len(failed_species)} species with no valid occurrence to {failed_file}")
+
+if __name__ == "__main__":
+    main()

@@ -4,6 +4,7 @@ Script to fetch the nearest GBIF occurrence with coordinates for a list of speci
 calculate the distance to Serra da Estrela, and save the results to a CSV.
 """
 
+from os import supports_effective_ids
 from numpy.lib.index_tricks import diff
 import pandas as pd
 import requests
@@ -11,6 +12,7 @@ import csv
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import sleep
+import re
 
 # Coordinates of Manteigas, Serra da Estrela, Portugal
 latitude = 40.404139
@@ -45,6 +47,24 @@ with open(output_file, "w", newline='') as file:
     writer = csv.writer(file)
     writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
 
+
+def clean_species_name(species_name):
+    """
+    Cleans the species name by removing any extra identifiers or codes.
+
+    Parameters:
+        species_name (str): The species name to clean.
+
+    Returns:
+        str: Cleaned species name.
+    """
+    # Remove 'sp.', 'cf.', 'aff.', 'nr.' (case insensitive)
+    species_name = re.sub(r'\b(sp|cf|aff|nr)\.?\b', '', species_name, flags=re.IGNORECASE)
+    # Reduce to a maximum of two terms (Genus + Species)
+    name = ' '.join(species_name.strip().split()[:2])
+    return name.strip()
+
+
 # Function to fetch speciesKey from GBIF using the species name
 def get_species_key(species_name):
     """
@@ -56,6 +76,7 @@ def get_species_key(species_name):
     Returns:
         int or None: The speciesKey if found, otherwise None.
     """
+    species_name = clean_species_name(species_name)
     url = "https://api.gbif.org/v1/species/match"
     params = {"name": species_name}
     try:
@@ -88,12 +109,19 @@ def fetch_nearest_occurrence(species_name):
     params = {
         "speciesKey": species_key,
         "hasCoordinate": "true",
+        "limit": 300
     }
     try:
         response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         occurrences = data.get("results", [])
+        print(f"Species: {species_name}, Occurrences found: {len(occurrences)}")
+
+        if len(occurrences) == 0:
+                    print(f"  No occurrences found for {species_name}")
+                    return None
+
 
         nearest = None
         min_distance = float("inf")
@@ -133,8 +161,7 @@ def main():
     output_file = "results/blast/gbif_occurrences_nearest.csv"
 
     df_species = pd.read_csv(input_file)
-    species_list = df_species["Species"].dropna().unique()
-
+    species_list = [clean_species_name(s) for s in df_species["Species"].dropna().unique()]
     with open(output_file, "w", newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])

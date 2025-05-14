@@ -1,11 +1,9 @@
 from Bio import Entrez, SeqIO
 from ete3 import NCBITaxa
-import pandas as pd
 from pathlib import Path
 import csv
 import time
 import argparse
-import sys
 
 # Set email for NCBI API
 Entrez.email = "saracmc21@gmail.com"

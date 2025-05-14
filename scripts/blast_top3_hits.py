@@ -11,13 +11,21 @@ columns = [
     "qstart", "qend", "sstart", "send", "evalue", "bitscore"
 ]
 
-# Read the BLAST results
-df = pd.read_csv(input_file, sep="\t", names=columns)
+def main():
+    # Read the BLAST results
+    df = pd.read_csv(input_file, sep="\t", names=columns)
 
-# Sort by query ID and percent identity (descending), then keep top 3 hits per query
-top3 = df.sort_values(by=["qseqid", "pident"], ascending=[True, False]) \
-         .groupby("qseqid").head(3)
+    # Sort by query ID and percent identity (descending),
+    # then keep top 3 hits per query
+    top3 = (
+        df.sort_values(by=["qseqid", "pident"], ascending=[True, False])
+        .groupby("qseqid")
+        .head(3)
+    )
 
-# Save the result
-output_file.parent.mkdir(parents=True, exist_ok=True)
-top3.to_csv(output_file, sep="\t", index=False)
+    # Save the result
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    top3.to_csv(output_file, sep="\t", index=False)
+
+if __name__ == "__main__":
+    main()

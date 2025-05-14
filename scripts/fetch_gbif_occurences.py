@@ -263,6 +263,9 @@ def main():
                 failed_species.append([species])
             sleep(0.1)  # Small delay to avoid rate limits
 
+    # Remove fuzzy matched species from failed list
+    failed_species = [sp for sp in failed_species if sp not in fuzzy_matched_species]
+
     # Write successful occurrences
     with open(output_file, "a", newline='') as file:
         writer = csv.writer(file)
@@ -280,7 +283,8 @@ def main():
         writer.writerows(fuzzy_matched_species)
 
     print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
-    print(f"Logged {len(failed_species)} species with no valid occurrence to {failed_file}")
+    print(f" Logged {len(failed_species)} species with no valid occurrence to {failed_file}")
+    print(f" Logged {len(fuzzy_matched_species)} species foud via fuzzy matching to {fuzzy_file}")
 
 if __name__ == "__main__":
     main()

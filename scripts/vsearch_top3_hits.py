@@ -2,7 +2,6 @@
 
 # Select top 3 VSEARCH hits per query based on percent identity
 
-import os
 import pandas as pd
 from pathlib import Path
 

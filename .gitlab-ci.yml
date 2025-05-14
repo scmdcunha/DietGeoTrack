@@ -1,0 +1,10 @@
+image: python:3.9
+
+stages:
+  - lint
+
+flake8:
+  stage: lint
+  script:
+    - pip install flake8
+    - flake8 scripts/

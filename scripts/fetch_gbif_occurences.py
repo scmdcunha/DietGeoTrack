@@ -222,7 +222,6 @@ def fuzzy_match_species(species_list, threshold=0.8):
             fuzzy_matched_species.append(species)
     return fuzzy_matched_species
 
-
 def main():
     """
     Main execution function:
@@ -289,13 +288,13 @@ def main():
                 failed_species.append([species])
             sleep(0.1)  # Small delay to avoid rate limits
 
-    failed_species = [
-        sp for sp in failed_species if sp[0] not in fuzzy_matched_species
-    ]
+    # Sort results by distance (ascending order)
+    results_sorted = sorted(results, key=lambda x: x[-1])  # x[-1] is the distance
 
+    # Save sorted results
     with open(output_file, "a", newline='') as file:
         writer = csv.writer(file)
-        writer.writerows(results)
+        writer.writerows(results_sorted)
 
     with open(failed_file, "a", newline='') as file:
         writer = csv.writer(file)
@@ -307,7 +306,7 @@ def main():
         writer.writerow(["Species"])
         writer.writerows([[species] for species in fuzzy_matched_species])
 
-    print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
+    print(f"\nDone. Saved {len(results_sorted)} nearest occurrences to {output_file}")
     print(
         f"Logged {len(failed_species)} species with no valid occurrence "
         f"to {failed_file}"

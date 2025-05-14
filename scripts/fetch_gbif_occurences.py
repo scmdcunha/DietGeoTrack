@@ -4,8 +4,6 @@ Script to fetch the nearest GBIF occurrence with coordinates for a list of speci
 calculate the distance to Serra da Estrela, and save the results to a CSV.
 """
 
-from os import supports_effective_ids
-from numpy.lib.index_tricks import diff
 import pandas as pd
 import requests
 import csv
@@ -13,6 +11,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import sleep
 import re
+from difflib import SequenceMatcher
 
 # Coordinates of Manteigas, Serra da Estrela, Portugal
 latitude = 40.404139
@@ -70,15 +69,38 @@ def clean_species_name(species_name):
     else:
         return None
 
+def fetch_species_key_fuzzy(name):
+    """
+    Attempts to find a GBIF speciesKey using fuzzy matching via the 'suggest' endpoint.
+
+    Parameters:
+        name (str): Species name.
+
+    Returns:
+        int or None: usageKey if found, otherwise None.
+    """
+    try:
+        response = requests.get("https://api.gbif.org/v1/species/suggest", params={"q": name}, timeout=10)
+        response.raise_for_status()
+        suggestions = response.json()
+        if suggestions:
+            best_match = suggestions[0]
+            return best_match.get("key")
+    except Exception as e:
+        print(f"  Error during fuzzy match for '{name}': {e}")
+    return None
+
+fuzzy_matched_species = []
 
 # Function to fetch speciesKey from GBIF using the species name
-def get_species_key(species_name):
+def get_species_key(species_name, fuzzy_log_list=None):
     """
-    Tries to retrieve the GBIF speciesKey using the full cleaned name,
-    and falls back to a simpler version if the match fails.
+    Tries to retrieve the GBIF speciesKey using cleaned and fallback names.
+    Falls back to fuzzy matching via GBIF 'sugest' endpoint if direct match fails.
 
     Parameters:
         species_name (str): The original species name from input data.
+        fuzzy_log_list (list): List to log species found via fuzzy matching.
 
     Returns:
         int or None: The GBIF speciesKey, or None if not found.
@@ -96,14 +118,25 @@ def get_species_key(species_name):
         return None
 
     cleaned_name = clean_species_name(species_name)
+    if not cleaned_name:
+        return None
+
     key = fetch_key(cleaned_name)
 
     if not key:
         # Fallback: Try only the first two words (Genus + Species)
-        fallback_name = ' '.join(cleaned_name.strip().split()[:2])
+        fallback_name = ' '.join(cleaned_name.split()[:2])
         if fallback_name != cleaned_name:
-            print(f"  '{cleaned_name}' → trying fallback '{fallback_name}'")
+            print(f"  '{cleaned_name}' trying fallback '{fallback_name}'")
             key = fetch_key(fallback_name)
+
+    # If it hasn't found it yet, try fuzzy matching
+
+    if not key:
+        print(f" trying fuzzy matchig for '{species_name}'")
+        key = fetch_species_key_fuzzy(species_name)
+        if key and fuzzy_log_list is not None:
+            fuzzy_log_list.append([species_name])
 
     if not key:
         print(f"speciesKey not found for '{species_name}'")
@@ -123,7 +156,7 @@ def fetch_nearest_occurrence(species_name):
         list or None: A list containing [Species, Lat, Lon, Date, Country, ID, Distance],
                       or None if no valid occurrence is found.
     """
-    species_key = get_species_key(species_name)
+    species_key = get_species_key(species_name, fuzzy_matched_species)
     if species_key:
         params = {
             "speciesKey": species_key,
@@ -239,6 +272,12 @@ def main():
     with open(failed_file, "a", newline='') as file:
         writer = csv.writer(file)
         writer.writerows(failed_species)
+
+    fuzzy_file = "results/blast/fuzzy_matched_species.csv"
+    with open(fuzzy_file, "w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Species"])
+        writer.writerows(fuzzy_matched_species)
 
     print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
     print(f"Logged {len(failed_species)} species with no valid occurrence to {failed_file}")

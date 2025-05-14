@@ -230,7 +230,11 @@ def fetch_nearest_occurrence_with_fuzzy(species_name, fuzzy_matched_species):
             print(f" Logged {len(fuzzy_occurrences)} occurrences for fuzzy matched species to {fuzzy_occurrences_file}")
 
         if nearest:
-            return nearest
+            if species_name in fuzzy_matched_species:
+                with open("results/blast/fuzzy_best_match.csv", "a", newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(nearest)
+                    return nearest
         else:
             print(f" No valid coordinates found in occurrences for {species_name}")
             return None
@@ -275,9 +279,12 @@ def main():
     failed_file = "results/blast/failed_species.csv"
 
     fuzzy_occurrences_file = "results/blast/fuzzy_matched_occurrences.csv"
-    with open(fuzzy_occurrences_file, "w", newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
+    fuzzy_best_file = "results/blast/fuzzy_best_match.csv"
+
+    for path in [fuzzy_occurrences_file, fuzzy_best_file]:
+        with open(path, "w", newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
 
 
     print(f" Reading species from: {input_file}")
@@ -339,7 +346,6 @@ def main():
 
     print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
     print(f" Logged {len(failed_species)} species with no valid occurrence to {failed_file}")
-    print(f" Logged {len(fuzzy_matched_species)} species found via fuzzy matching to {fuzzy_file}")
     print(f" Logged {len(fuzzy_matched_species)} species found via fuzzy matching to {fuzzy_file}")
 
 if __name__ == "__main__":

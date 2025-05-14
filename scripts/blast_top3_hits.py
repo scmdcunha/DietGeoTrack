@@ -11,6 +11,7 @@ columns = [
     "qstart", "qend", "sstart", "send", "evalue", "bitscore"
 ]
 
+
 def main():
     # Read the BLAST results
     df = pd.read_csv(input_file, sep="\t", names=columns)
@@ -26,6 +27,7 @@ def main():
     # Save the result
     output_file.parent.mkdir(parents=True, exist_ok=True)
     top3.to_csv(output_file, sep="\t", index=False)
+
 
 if __name__ == "__main__":
     main()

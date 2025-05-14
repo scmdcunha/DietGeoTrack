@@ -27,8 +27,8 @@ def haversine(lat1, lon1, lat2, lon2):
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lon2 - lon1)
 
-    a = (math.sin(d_phi / 2) ** 2 +
-         math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2)
+    a = (math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2)
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return r * c
 
@@ -279,7 +279,7 @@ def main():
                 if result:
                     results.append(result)
                     print(
-                        f"[{i+1}/{len(species_list)}] {species} "
+                        f"[{i + 1}/{len(species_list)}] {species} "
                         f"→ {result[-1]} km"
                     )
                 else:
@@ -290,7 +290,7 @@ def main():
             sleep(0.1)  # Small delay to avoid rate limits
 
     failed_species = [
-        sp for sp in failed_species if sp not in fuzzy_matched_species
+        sp for sp in failed_species if sp[0] not in fuzzy_matched_species
     ]
 
     with open(output_file, "a", newline='') as file:

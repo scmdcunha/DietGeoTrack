@@ -46,7 +46,6 @@ with open(output_file, "w", newline='') as file:
     writer = csv.writer(file)
     writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
 
-
 def clean_species_name(species_name):
     """
     Cleans the species name by removing any extra identifiers or codes.
@@ -57,6 +56,7 @@ def clean_species_name(species_name):
     Returns:
         str: Cleaned species name.
     """
+    print(f" Cleaning species name: {species_name}")
     # Remove 'sp.', 'cf.', 'aff.', 'nr.' (case insensitive)
     species_name = re.sub(r'\b(sp|cf|aff|nr)\.?\b', '', species_name, flags=re.IGNORECASE)
     species_name = re.sub(r'\.+', '', species_name)
@@ -79,6 +79,7 @@ def fetch_species_key_fuzzy(name):
     Returns:
         int or None: usageKey if found, otherwise None.
     """
+    print(f" Fuzzy matching for species: {name}")
     try:
         response = requests.get("https://api.gbif.org/v1/species/suggest", params={"q": name}, timeout=10)
         response.raise_for_status()
@@ -89,8 +90,6 @@ def fetch_species_key_fuzzy(name):
     except Exception as e:
         print(f"  Error during fuzzy match for '{name}': {e}")
     return None
-
-fuzzy_matched_species = []
 
 # Function to fetch speciesKey from GBIF using the species name
 def get_species_key(species_name, fuzzy_log_list=None):
@@ -105,6 +104,7 @@ def get_species_key(species_name, fuzzy_log_list=None):
     Returns:
         int or None: The GBIF speciesKey, or None if not found.
     """
+    print(f" Getting species key for: {species_name}")
     def fetch_key(name):
         """Helper function to request speciesKey from GBIF API."""
         try:
@@ -139,23 +139,24 @@ def get_species_key(species_name, fuzzy_log_list=None):
             fuzzy_log_list.append([species_name])
 
     if not key:
-        print(f"speciesKey not found for '{species_name}'")
+        print(f" speciesKey not found for '{species_name}'")
 
     return key
 
-# Function to fetch the nearest occurrence of a species from GBIF
-def fetch_nearest_occurrence(species_name):
+def fetch_nearest_occurrence_with_fuzzy(species_name, fuzzy_matched_species):
     """
     Fetches the nearest occurrence with coordinates for a species from GBIF,
     and computes the distance to Serra da Estrela.
 
     Parameters:
         species_name (str): The full species name to search for.
+        fuzzy_matched_species (list): A list of species names matched via fuzzy matching.
 
     Returns:
         list or None: A list containing [Species, Lat, Lon, Date, Country, ID, Distance],
                       or None if no valid occurrence is found.
     """
+    print(f" Fetching nearest occurrences for species: {species_name}")
     species_key = get_species_key(species_name, fuzzy_matched_species)
     if species_key:
         params = {
@@ -185,6 +186,8 @@ def fetch_nearest_occurrence(species_name):
         nearest = None
         min_distance = float("inf")
 
+        fuzzy_occurrences = []
+
         for occ in occurrences:
             lat = occ.get("decimalLatitude")
             lon = occ.get("decimalLongitude")
@@ -203,15 +206,61 @@ def fetch_nearest_occurrence(species_name):
                         round(distance, 2)
                     ]
 
+                # Add occurrence to fuzzy if it's fuzzy matched
+                if species_name in fuzzy_matched_species:
+                    fuzzy_occurrences.append([
+                        species_name,
+                        lat,
+                        lon,
+                        occ.get("eventDate"),
+                        occ.get("country"),
+                        occ.get("occurrenceID"),
+                        round(distance, 2)
+                    ])
+
+        # Save fuzzy matched occurrences to a separate CSV file
+        if fuzzy_occurrences:
+            fuzzy_occurrences_file = "results/blast/fuzzy_matched_occurrences.csv"
+            with open(fuzzy_occurrences_file, "a", newline='') as file:
+                writer = csv.writer(file)
+                writer.writerows(fuzzy_occurrences)
+            print(f" Logged {len(fuzzy_occurrences)} occurrences for fuzzy matched species to {fuzzy_occurrences_file}")
+
+
+            print(f" Logged {len(fuzzy_occurrences)} occurrences for fuzzy matched species to {fuzzy_occurrences_file}")
+
         if nearest:
             return nearest
         else:
-            print(f"No valid coordinates found in occurrences for {species_name}")
+            print(f" No valid coordinates found in occurrences for {species_name}")
             return None
 
     except Exception as e:
         print(f"Error fetching occurrences for {species_name}: {e}")
         return None
+
+
+def fuzzy_match_species(species_list, threshold=0.8):
+    """
+    Perform fuzzy matching for species names against the GBIF species suggest endpoint.
+    Returns a list of species names that were matched with a high enough similarity score.
+
+    Parameters:
+        species_list (list): List of species names to match.
+        threshold (float): Similarity threshold for fuzzy matching (between 0 and 1).
+
+    Returns:
+        list: A list of species names that were matched via fuzzy matching.
+    """
+    fuzzy_matched_species = []
+
+    for species in species_list:
+        matched_key = fetch_species_key_fuzzy(species)
+        if matched_key:
+            fuzzy_matched_species.append(species)
+
+    return fuzzy_matched_species
+
 
 def main():
     """
@@ -225,11 +274,17 @@ def main():
     output_file = "results/blast/gbif_occurrences_nearest.csv"
     failed_file = "results/blast/failed_species.csv"
 
+    fuzzy_occurrences_file = "results/blast/fuzzy_matched_occurrences.csv"
+    with open(fuzzy_occurrences_file, "w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Species", "Lat", "Lon", "Date", "Country", "ID", "Distance"])
+
+
+    print(f" Reading species from: {input_file}")
     df_species = pd.read_csv(input_file)
-    species_list = [
-        name for s in df_species["Species"].dropna().unique()
-        if (name := clean_species_name(s)) is not None
-    ]
+    species_list = df_species["Species"].dropna().unique().tolist()
+
+    fuzzy_matched_species = fuzzy_match_species(species_list)
 
     # Initialize output files with headers
     with open(output_file, "w", newline='') as file:
@@ -245,7 +300,7 @@ def main():
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_species = {
-            executor.submit(fetch_nearest_occurrence, species): species
+            executor.submit(fetch_nearest_occurrence_with_fuzzy, species, fuzzy_matched_species): species
             for species in species_list
         }
 
@@ -280,11 +335,12 @@ def main():
     with open(fuzzy_file, "w", newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Species"])
-        writer.writerows(fuzzy_matched_species)
+        writer.writerows([[species] for species in fuzzy_matched_species])
 
     print(f"\nDone. Saved {len(results)} nearest occurrences to {output_file}")
     print(f" Logged {len(failed_species)} species with no valid occurrence to {failed_file}")
-    print(f" Logged {len(fuzzy_matched_species)} species foud via fuzzy matching to {fuzzy_file}")
+    print(f" Logged {len(fuzzy_matched_species)} species found via fuzzy matching to {fuzzy_file}")
+    print(f" Logged {len(fuzzy_matched_species)} species found via fuzzy matching to {fuzzy_file}")
 
 if __name__ == "__main__":
     main()

@@ -49,7 +49,7 @@
 
 You can use the provided script to fetch taxonomy information from NCBI for a list of accession numbers.
 
-**Script:** `fetch_taxonomy.py`
+**Script:** `fetch_taxonomy_ncbi.py`
 
 **Arguments:**
 - `--input` : Path to a text file with one accession number per line.
@@ -58,7 +58,8 @@ You can use the provided script to fetch taxonomy information from NCBI for a li
 
 **Example usage:**
     ```
-    python3 scripts/fetch_taxonomy.py --input results/blast/arthropoda.blast.top3.unique.ids.txt --output results/blast/ncbi_taxonomy_lookup.csv --email your_email@domain.com
+    python3 scripts/fetch_taxonomy.py --input results/blast/arthropoda.blast.top3.unique.ids.txt
+    --output results/blast/ncbi_taxonomy_lookup.csv --email your_email@domain.com
     ```
 
 **Output:**

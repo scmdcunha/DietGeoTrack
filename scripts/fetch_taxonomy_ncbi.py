@@ -5,9 +5,6 @@ import csv
 import time
 import argparse
 
-# Set email for NCBI API
-Entrez.email = "saracmc21@gmail.com"
-
 # Initialize NCBI Taxa
 ncbi = NCBITaxa()
 
@@ -94,6 +91,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch taxonomy from NCBI for accession IDs.")
     parser.add_argument("--input", required=True, help="Path to input file with accession IDs")
     parser.add_argument("--output", required=True, help="Path to output CSV file")
-
+    parser.add_argument("--email", required=True, help="Email for NCBI Entrez")
     args = parser.parse_args()
+    Entrez.email = args.email
     main(args.input, args.output)

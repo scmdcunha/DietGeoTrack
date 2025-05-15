@@ -57,9 +57,9 @@ You can use the provided script to fetch taxonomy information from NCBI for a li
 - `--email` : Your email address (required by NCBI Entrez).
 
 **Example usage:**
-
-python3 scripts/fetch_taxonomy.py --input results/blast/arthropoda.blast.top3.unique.ids.txt --output results/blast/ncbi_taxonomy_lookup.csv --email your_email@domain.com
-
+    ```
+    python3 scripts/fetch_taxonomy.py --input results/blast/arthropoda.blast.top3.unique.ids.txt --output results/blast/ncbi_taxonomy_lookup.csv --email your_email@domain.com
+    ```
 
 **Output:**
 - A CSV file with columns: Accession ID, Order, Family, Genus, Species.

@@ -82,6 +82,7 @@ Script: fetch_taxonomy.py
     --email : Your email address (required by NCBI Entrez).
 
 **Example usage:**
+
     ```
     python3 scripts/fetch_taxonomy.py --input results/blast/arthropoda.blast.top3.unique.ids.txt --output results/blast/ncbi_taxonomy_lookup.csv --email your_email@domain.com
     ```

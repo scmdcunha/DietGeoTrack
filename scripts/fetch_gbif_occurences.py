@@ -37,17 +37,15 @@ def clean_species_name(species_name):
     """
     Cleans the species name by removing any extra identifiers or codes.
     """
-    print(f"Cleaning species name: {species_name}")
     species_name = re.sub(
         r'\b(sp|cf|aff|nr)\.?\b', '', species_name, flags=re.IGNORECASE)
+    species_name = re.sub(r'BOLD:[A-Z0-9]+', '', species_name)
     species_name = re.sub(r'\.+', '', species_name)
     species_name = re.sub(r'\s+', ' ', species_name).strip()
-
     parts = species_name.split()
-    if len(parts) >= 2:
+    if len(parts) >= 2 and parts[0][0].isupper() and parts[1][0].islower():
         return f"{parts[0]} {parts[1]}"
     return None
-
 
 def fetch_species_key_fuzzy(name):
     """
@@ -245,8 +243,10 @@ def main():
 
     print(f"Reading species from: {input_file}")
     df_species = pd.read_csv(input_file)
-    species_list = df_species["Species"].dropna().unique().tolist()
-
+    species_list = [
+        clean_species_name(s) for s in df_species["Species"].dropna().unique().tolist()
+    ]
+    species_list = [s for s in species_list if s]
     fuzzy_matched_species = fuzzy_match_species(species_list)
 
     with open(output_file, "w", newline='') as file:

@@ -12,6 +12,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import sleep
 import re
 
+
+def gbif_request_with_retry(url, params=None, max_retries=5, backoff_factor=1):
+    """
+    Makes a GET request with retry and exponential backoff in case of 503
+    error or network failure.
+    """
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, params=params, timeout=20)
+            if response.status_code == 503:
+                wait = backoff_factor * (2 ** attempt)
+                print(f"503 error. Waiting {wait}s before retrying...")
+                sleep(wait)
+                continue
+            response.raise_for_status()
+            return response
+        except requests.RequestException as e:
+            wait = backoff_factor * (2 ** attempt)
+            print(f"Request failed: {e}. Retrying in {wait}s...")
+            sleep(wait)
+    print(f"Failed to fetch data from GBIF after {max_retries} attempts. URL: {url}")
+    return None
+
 # Coordinates of Manteigas, Serra da Estrela, Portugal
 LATITUDE = 40.404139
 LONGITUDE = -7.538167
@@ -53,12 +76,13 @@ def fetch_species_key_fuzzy(name):
     """
     print(f"Fuzzy matching for species: {name}")
     try:
-        response = requests.get(
+        response = gbif_request_with_retry(
             "https://api.gbif.org/v1/species/suggest",
-            params={"q": name},
-            timeout=10
+            params={"q": name}
         )
-        response.raise_for_status()
+        if response is None:
+            return None
+
         suggestions = response.json()
         if suggestions:
             best_match = suggestions[0]
@@ -77,12 +101,13 @@ def get_species_key(species_name, fuzzy_log_list=None):
 
     def fetch_key(name):
         try:
-            response = requests.get(
+            response = gbif_request_with_retry(
                 "https://api.gbif.org/v1/species/match",
-                params={"name": name},
-                timeout=10
+                params={"name": name}
             )
-            response.raise_for_status()
+            if response is None:
+                return None
+
             data = response.json()
             if data.get("matchType") != "NONE" and data.get("usageKey"):
                 return data.get("usageKey")
@@ -136,8 +161,10 @@ def fetch_nearest_occurrence_with_fuzzy(species_name, fuzzy_matched_species):
     url = "https://api.gbif.org/v1/occurrence/search"
 
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
+        response = gbif_request_with_retry(url, params)
+        if response is None:
+            print(f"Failed to fetch occurrences for {species_name} after retries.")
+            return None
         data = response.json()
         occurrences = data.get("results", [])
         print(f"{species_name}: {len(occurrences)} occurrences found.")
@@ -261,7 +288,7 @@ def main():
     results = []
     failed_species = []
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_species = {
             executor.submit(
                 fetch_nearest_occurrence_with_fuzzy,

@@ -1,16 +1,16 @@
 FROM snakemake/snakemake:v9.1.7
 
-SHELL ["bash", "-l", "-c"]
 WORKDIR /data
 
-# Creates micromamba environment with necessary packages
-RUN micromamba create -n metabarcoding -y \
-    -c conda-forge -c bioconda \
-    vsearch=2.30.0 \
-    blast=2.16.0 \
-    pandas=2.2.3 \
-    gdal=3.7.2 \
-    biopython=1.85
+# Copy environment.yml into the container
+COPY environment.yml /tmp/environment.yml
 
-# Activates the environment
-ENV PATH=/opt/conda/envs/metabarcoding/bin:$PATH
+# Create metabarcoding environment with micromamba
+RUN micromamba create -y -n metabarcoding -f /tmp/environment.yml -c conda-forge -c bioconda \
+    && micromamba clean --all --yes
+
+# Ensures the environment is in the PATH
+ENV PATH="/opt/conda/envs/metabarcoding/bin:$PATH"
+
+# Use bash by default
+CMD ["/bin/bash"]

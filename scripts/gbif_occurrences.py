@@ -183,6 +183,7 @@ def main():
 
     df = pd.read_csv(input_csv)
     results = []
+    seen_species = set()
     to_check_manually = []
     no_coordinates = []
 
@@ -197,13 +198,18 @@ def main():
         for future in as_completed(futures):
             occurrence, failed_name, is_no_coordinates = future.result()
             if occurrence:
-                results.append(occurrence)
+                if occurrence["species_name"] not in seen_species:
+                    results.append(occurrence)
+                    seen_species.add(occurrence["species_name"])
             elif failed_name:
                 if is_no_coordinates:
-                    no_coordinates.append({"species_name": failed_name})
+                    if failed_name not in no_coordinates_set:
+                        no_coordinates.append({"species_name": failed_name})
+                        no_coordinates_set.add(failed_name)
                 else:
-                    to_check_manually.append({"unmatched_name": failed_name})
-
+                    if failed_name not in to_check_manually_set:
+                        to_check_manually.append({"unmatched_name": failed_name})
+                        to_check_manually_set.add(failed_name)
     results.sort(key=lambda x: x["distance_km"])
     # Saves occurrences with valid coordenates
     headers = ["species_name", "lat", "lon", "date", "country", "occurrenceID", "distance_km", "match_type"]

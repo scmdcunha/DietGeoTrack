@@ -1,3 +1,17 @@
+#!/usr/bin/env python3
+"""
+Script to find the closest GBIF occurrence for each species listed in a CSV file.
+
+For each scientific species name in the input CSV, the script queries the GBIF API
+to retrieve occurrence records within a specified radius from a reference geographic
+point (latitude and longitude). It caches API responses to avoid repeated queries,
+calculates the geographic distance using GDAL between occurrences and the reference
+point, and outputs the closest occurrence for each species.
+
+Results are saved into a CSV file, and species without any occurrence found are saved
+in a separate CSV for further manual review.
+"""
+
 import argparse
 import pandas as pd
 import requests

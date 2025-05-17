@@ -1,241 +1,193 @@
-#!/usr/bin/env python3
-"""
-Script to fetch the nearest GBIF occurrence with coordinates for a list of species,
-calculate the distance to Serra da Estrela, and save the results to a CSV.
-"""
-
+import argparse
 import pandas as pd
 import requests
-import math
-import csv
-from time import sleep
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+import os
 import json
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from osgeo import ogr, osr
+from math import radians, cos
 
-
-# Fixed coordinates for Serra da Estrela (reference location)
-LATITUDE = 40.404139
-LONGITUDE = -7.538167
-
-def haversine(lat1, lon1, lat2, lon2):
+def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """
-    Calculates the great-circle distance (in kilometers) between two points
-    on the Earth's surface using the Haversine formula.
+    Calculates the geodesic distance (in kilometers) between two points using GDAL.
+
+    Parameters:
+        lat1, lon1: Latitude and longitude of the first point.
+        lat2, lon2: Latitude and longitude of the second point.
+
+    Returns:
+        Distance in kilometers.
     """
-    r = 6378  # Earth's radius in kilometers
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lambda = math.radians(lon2 - lon1)
+    point1 = ogr.Geometry(ogr.wkbPoint)
+    point1.AddPoint(lon1, lat1)
+    point2 = ogr.Geometry(ogr.wkbPoint)
+    point2.AddPoint(lon2, lat2)
 
-    a = (math.sin(d_phi / 2) ** 2
-         + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return r * c
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)  # WGS84 coordinate system
 
+    point1.AssignSpatialReference(sr)
+    point2.AssignSpatialReference(sr)
 
-def gbif_request_with_retry(url, params=None, max_retries=5, backoff_factor=1):
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, params=params, timeout=20)
-            if response.status_code == 503:
-                wait = backoff_factor * (2 ** attempt)
-                print(f"503 error. Waiting {wait}s before retrying...")
-                sleep(wait)
-                continue
+    sr_m = osr.SpatialReference()
+    sr_m.ImportFromEPSG(3857)  # Web Mercator projection (in meters)
+    transform = osr.CoordinateTransformation(sr, sr_m)
 
-            response.raise_for_status()
+    point1.Transform(transform)
+    point2.Transform(transform)
 
-            # Try to parse JSON to catch decode errors early and retry
-            try:
-                _ = response.json()
-            except json.JSONDecodeError as e:
-                wait = backoff_factor * (2 ** attempt)
-                print(f"JSON decode error: {e}. Retrying in {wait}s...")
-                sleep(wait)
-                continue
+    return point1.Distance(point2) / 1000  # Convert meters to kilometers
 
-            return response
-
-        except requests.RequestException as e:
-            wait = backoff_factor * (2 ** attempt)
-            print(f"Request failed: {e}. Retrying in {wait}s...")
-            sleep(wait)
-
-    print(f"Failed to fetch data from GBIF after {max_retries} attempts. URL: {url}")
-    return None
-
-def get_species_key(species_name):
+def bbox_from_radius(lat, lon, radius_km):
     """
-    Retrieves the GBIF usageKey for a given scientific name via the species/match endpoint.
-    Returns the usageKey and the type of match (exact, fuzzy, or none).
-    """
-    url = "https://api.gbif.org/v1/species/match"
-    params = {"name": species_name}
-    response = gbif_request_with_retry(url, params)
-    if response is None:
-        return None, "none"
-    data = response.json()
-    usage_key = data.get("usageKey")
-    match_type = data.get("matchType", "").lower()
-    if usage_key and match_type in ("exact", "fuzzy"):
-        return usage_key, match_type
-    return None, "none"
+    Generates a bounding box around a central point using an approximate radius.
 
-def fetch_nearest_occurrence(species_name):
-    """
-    Fetches the nearest GBIF occurrence of a species to Serra da Estrela.
-    Returns a dictionary with metadata of the nearest occurrence (if any).
-    """
-    species_key, match_type = get_species_key(species_name)
-    if match_type == "none":
-        return None, species_name, False  # To check manually later
+    Parameters:
+        lat, lon: Latitude and longitude of the central point.
+        radius_km: Radius in kilometers.
 
-    if species_key:
-        params = {
-            "speciesKey": species_key,
-            "hasCoordinate": "true",
-            "limit": 300
-        }
+    Returns:
+        A tuple: (min_lat, max_lat, min_lon, max_lon)
+    """
+    delta_lat = radius_km / 111.0  # 1 degree latitude ≈ 111 km
+    delta_lon = radius_km / (111.0 * cos(radians(lat)))
+    return (lat - delta_lat, lat + delta_lat, lon - delta_lon, lon + delta_lon)
+
+def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir):
+    """
+    Searches the GBIF API for occurrences of a given species within a specified radius,
+    and returns the closest one to the reference point.
+
+    Parameters:
+        species: Scientific name of the species.
+        ref_lat, ref_lon: Reference coordinates (e.g. sampling site).
+        radius_km: Search radius in kilometers.
+        cache_dir: Path to directory where JSON response will be cached.
+
+    Returns:
+        A dictionary with metadata of the closest occurrence, or None if not found.
+        Also returns the species name if no occurrence was found.
+    """
+    cache_path = Path(cache_dir) / f"{species.replace(' ', '_')}.json"
+    if cache_path.exists():
+        with open(cache_path) as f:
+            occurrences = json.load(f)
     else:
-        params = {
-            "scientificName": species_name,
-            "hasCoordinate": "true",
-            "limit": 300
-        }
+        min_lat, max_lat, min_lon, max_lon = bbox_from_radius(ref_lat, ref_lon, radius_km)
+        base_url = "https://api.gbif.org/v1/occurrence/search"
+        limit, offset = 300, 0
+        occurrences = []
 
-    url = "https://api.gbif.org/v1/occurrence/search"
-    response = gbif_request_with_retry(url, params)
-    if response is None:
-        return None, species_name, False
+        # Paginate through GBIF API results
+        while True:
+            params = {
+                "scientificName": species,
+                "hasCoordinate": "true",
+                "decimalLatitude": f"{min_lat},{max_lat}",
+                "decimalLongitude": f"{min_lon},{max_lon}",
+                "limit": limit,
+                "offset": offset
+            }
 
-    try:
-        data = response.json()
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON for species {species_name}: {e}")
-        return None, species_name, False
+            r = requests.get(base_url, params=params)
+            if r.status_code != 200:
+                print(f"[Error] GBIF API call failed for {species} (status {r.status_code})")
+                return None, species
 
-    occurrences = data.get("results", [])
-    if not occurrences:
-        return None, species_name, False
+            results = r.json().get("results", [])
+            occurrences += results
 
-    nearest = None
-    min_distance = float("inf")
+            if offset + limit >= r.json().get("count", 0):
+                break
 
+            offset += limit
+            time.sleep(0.2)  # Avoid overloading the API
+
+        with open(cache_path, "w") as f:
+            json.dump(occurrences, f)
+
+    # Identify closest occurrence to reference point
+    best, best_dist = None, radius_km * 1.1  # Allow some margin over max radius
     for occ in occurrences:
-        lat = occ.get("decimalLatitude")
-        lon = occ.get("decimalLongitude")
-        if lat is not None and lon is not None:
-            distance = haversine(LATITUDE, LONGITUDE, lat, lon)
-            if distance < min_distance:
-                min_distance = distance
-                nearest = {
-                    "species_name": species_name,
-                    "lat": lat,
-                    "lon": lon,
-                    "date": occ.get("eventDate", ""),
-                    "country": occ.get("country", ""),
-                    "occurrenceID": occ.get("occurrenceID", ""),
-                    "distance_km": round(distance, 2),
-                    "match_type": match_type
-                }
-    if nearest:
-        return nearest, None, False
+        lat, lon = occ.get("decimalLatitude"), occ.get("decimalLongitude")
+        if lat is None or lon is None:
+            continue
+        dist = calculate_distance_gdal(ref_lat, ref_lon, lat, lon)
+        if dist < best_dist:
+            best_dist = dist
+            best = occ
+
+    if best:
+        return {
+            "species": species,
+            "gbifKey": best["key"],
+            "lat": best["decimalLatitude"],
+            "lon": best["decimalLongitude"],
+            "distance_km": round(best_dist, 2),
+            "eventDate": best.get("eventDate", ""),
+            "country": best.get("country", ""),
+            "locality": best.get("locality", ""),
+            "datasetKey": best.get("datasetKey", "")
+        }, None
     else:
-        # No occurrences with coordinates but occurrences exist
-        return None, species_name, True
+        return None, species
 
-
-def process_species_row(row, idx, total):
+def main(args):
     """
-    Processes a single row of the DataFrame to find the nearest GBIF occurrence.
-    Returns a tuple: (result, unmatched_name, no_coordinates_flag)
+    Main function that processes a list of species from a CSV file and finds the
+    closest GBIF occurrence for each one.
+
+    Results are saved to two CSVs: one with valid occurrences and one with missing data.
     """
-    species = str(row.get("Species", "")).strip()
-    genus = str(row.get("Genus", "")).strip()
+    df = pd.read_csv(args.input_csv)
+    if args.column not in df.columns:
+        raise ValueError(f"Column '{args.column}' not found in the input CSV.")
 
-    if not genus or not species:
-        print(f"Skipping incomplete row {idx}")
-        return (None, None, False)
+    species_list = df[args.column].dropna().drop_duplicates().tolist()
+    print(f"Unique species to process: {len(species_list)}")
 
-    if species.lower().startswith(genus.lower()):
-        species = species[len(genus):].strip()
+    os.makedirs(args.cache_dir, exist_ok=True)
+    results, no_hits = [], []
 
-    species_name = f"{genus} {species}"
-    print(f"({idx + 1}/{total}) Processing species: {species_name}")
-
-    occurrence, failed_name, is_no_coordinates = fetch_nearest_occurrence(species_name)
-    if occurrence:
-        return (occurrence, None, False)
-    elif failed_name:
-        species_key, _ = get_species_key(species_name)
-        if species_key:
-            return (None, failed_name, True)  # No coordinates
-        else:
-            return (None, failed_name, False)  # Not found in GBIF
-
-    return (None, None, False)
-
-def main():
-    input_csv = "results/blast/ncbi_taxonomy_lookup.csv"
-    output_csv = "results/blast/gbif_nearest_occurrences.csv"
-    manual_check_csv = "results/blast/gbif_names_to_check_manually.csv"
-
-    df = pd.read_csv(input_csv)
-    results = []
-    seen_species = set()
-    to_check_manually = []
-    no_coordinates = []
-
-    total = len(df)
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # Parallel processing using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = {
-            executor.submit(process_species_row, row, idx, total): idx
-            for idx, row in df.iterrows()
+            executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir): sp
+            for sp in species_list
         }
+        for i, future in enumerate(as_completed(futures), 1):
+            sp = futures[future]
+            try:
+                res, no_hit = future.result()
+                if res:
+                    results.append(res)
+                    print(f"[{i}/{len(species_list)}] {sp}")
+                elif no_hit:
+                    no_hits.append({"species": no_hit})
+                    print(f"[{i}/{len(species_list)}] No occurrence: {sp}")
+            except Exception as e:
+                print(f"[{i}/{len(species_list)}] Error with {sp}: {e}")
+                no_hits.append({"species": sp})
 
-        for future in as_completed(futures):
-            occurrence, failed_name, is_no_coordinates = future.result()
-            if occurrence:
-                if occurrence["species_name"] not in seen_species:
-                    results.append(occurrence)
-                    seen_species.add(occurrence["species_name"])
-            elif failed_name:
-                if is_no_coordinates:
-                    if failed_name not in no_coordinates_set:
-                        no_coordinates.append({"species_name": failed_name})
-                        no_coordinates_set.add(failed_name)
-                else:
-                    if failed_name not in to_check_manually_set:
-                        to_check_manually.append({"unmatched_name": failed_name})
-                        to_check_manually_set.add(failed_name)
-    results.sort(key=lambda x: x["distance_km"])
-    # Saves occurrences with valid coordenates
-    headers = ["species_name", "lat", "lon", "date", "country", "occurrenceID", "distance_km", "match_type"]
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-        for r in results:
-            writer.writerow(r)
+    pd.DataFrame(results).to_csv(args.output_csv, index=False)
+    print(f"\nResults saved to: {args.output_csv}")
 
-    if to_check_manually:
-        with open(manual_check_csv, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["unmatched_name"])
-            writer.writeheader()
-            for item in to_check_manually:
-                writer.writerow(item)
-
-    if no_coordinates:
-        with open("results/blast/gbif_species_with_no_coordinates.csv", "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["species_name"])
-            writer.writeheader()
-            for item in no_coordinates:
-                writer.writerow(item)
-
-    print(f"\nSaved {len(results)} valid nearest occurrences to {output_csv}")
-    print(f"{len(to_check_manually)} unmatched names saved to {manual_check_csv}")
-    print(f"{len(no_coordinates)} species had occurrences but no coordinates. Saved to gbif_species_with_no_coordinates.csv")
+    if no_hits:
+        pd.DataFrame(no_hits).to_csv(args.no_occurrences_csv, index=False)
+        print(f"Species without occurrences saved to: {args.no_occurrences_csv}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Find the closest GBIF occurrence for each species.")
+    parser.add_argument("--input_csv", required=True, help="Path to input CSV file with scientific names.")
+    parser.add_argument("--column", required=True, help="Column name containing scientific names.")
+    parser.add_argument("--output_csv", required=True, help="Path to save the results CSV.")
+    parser.add_argument("--no_occurrences_csv", default="no_occurrences.csv", help="Path to save species with no matches.")
+    parser.add_argument("--ref_lat", type=float, default=40.3397, help="Reference latitude (e.g., sample site).")
+    parser.add_argument("--ref_lon", type=float, default=-7.6120, help="Reference longitude.")
+    parser.add_argument("--radius", type=float, default=20, help="Maximum search radius in kilometers.")
+    parser.add_argument("--cache_dir", default="cache", help="Directory to store cached GBIF responses.")
+    parser.add_argument("--threads", type=int, default=5, help="Number of threads to use.")
+    args = parser.parse_args()
+    main(args)

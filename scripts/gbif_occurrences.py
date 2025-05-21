@@ -22,7 +22,6 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from osgeo import ogr, osr
 from math import radians, cos
-from datetime import datetime
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """

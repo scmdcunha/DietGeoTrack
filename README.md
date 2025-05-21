@@ -66,6 +66,44 @@ You can use the provided script to fetch taxonomy information from NCBI for a li
 - A CSV file with columns: Accession ID, Order, Family, Genus, Species.
 - A `failed_ids.txt` file (in the same folder as the output) with accession numbers that could not be resolved.
 
+### 3. Fetch Closest GBIF Occurrences for Species
+
+You can use the provided script to retrieve the closest GBIF occurrence for each species in a CSV file, based on a defined geographic reference point (e.g., location of sample collection).
+
+**Script:** `gbif_occurrences.py`
+
+**Arguments:**
+- `--input_csv` : Path to the input CSV file containing species names.
+- `--column` : Name of the column containing the scientific names.
+- `--output_csv` : Path to the output CSV file where the closest occurrences will be saved.
+- `--no_occurrences_csv` : Path to the CSV file for species without nearby occurrences (default: `no_occurrences.csv`).
+- `--ref_lat` : Latitude of the reference point (default: `40.3397` – Serra da Estrela).
+- `--ref_lon` : Longitude of the reference point (default: `-7.6120`).
+- `--radius` : Search radius (in kilometers) around the reference point (default: `20`).
+- `--cache_dir` : Directory to cache GBIF API responses (default: `cache`).
+- `--threads` : Number of parallel threads to use (default: `5`).
+
+**Example usage:**
+
+    ```
+    python3 scripts/gbif_closest_occurrence.py
+    --input_csv data/species_list.csv
+    --column species
+    --output_csv results/gbif/closest_occurrences.csv
+    --no_occurrences_csv results/gbif/species_without_occurrence.csv
+    --ref_lat 40.3397
+    --ref_lon -7.6120
+    --radius 50
+    --cache_dir cache
+    --threads 6
+    ```
+
+**Output:**
+- A CSV file with the closest GBIF occurrence for each species, including coordinates, distance (in km), date, country, locality, and dataset key.
+- A CSV file (e.g. `species_without_occurrence.csv`) listing species with no occurrences found within the specified radius.
+- Cached JSON responses stored in the directory specified by `--cache_dir`.
+
+
 ---
 
 ## Getting Started (coming soon)

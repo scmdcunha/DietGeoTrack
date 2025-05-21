@@ -69,7 +69,7 @@ def bbox_from_radius(lat, lon, radius_km):
     delta_lon = radius_km / (111.0 * cos(radians(lat)))
     return (lat - delta_lat, lat + delta_lat, lon - delta_lon, lon + delta_lon)
 
-def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir):
+def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n):
     """
     Searches the GBIF API for occurrences of a given species within a specified radius,
     and returns the closest one to the reference point.
@@ -79,7 +79,7 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir):
         ref_lat, ref_lon: Reference coordinates (e.g. sampling site).
         radius_km: Search radius in kilometers.
         cache_dir: Path to directory where JSON response will be cached.
-
+        top_n: Number of closest occurrences to return.
     Returns:
         A dictionary with metadata of the closest occurrence, or None if not found.
         Also returns the species name if no occurrence was found.
@@ -122,29 +122,37 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir):
         with open(cache_path, "w") as f:
             json.dump(occurrences, f)
 
+    if not occurrences:
+        return None, species
+
     # Identify closest occurrence to reference point
-    best, best_dist = None, radius_km * 1.1  # Allow some margin over max radius
+    occurrences_with_distance = []
     for occ in occurrences:
         lat, lon = occ.get("decimalLatitude"), occ.get("decimalLongitude")
         if lat is None or lon is None:
             continue
         dist = calculate_distance_gdal(ref_lat, ref_lon, lat, lon)
-        if dist < best_dist:
-            best_dist = dist
-            best = occ
+        occ["distance_km"] = round(dist, 2)
+        occurrences_with_distance.append(occ)
 
-    if best:
-        return {
-            "species": species,
-            "gbifKey": best["key"],
-            "lat": best["decimalLatitude"],
-            "lon": best["decimalLongitude"],
-            "distance_km": round(best_dist, 2),
-            "eventDate": best.get("eventDate", ""),
-            "country": best.get("country", ""),
-            "locality": best.get("locality", ""),
-            "datasetKey": best.get("datasetKey", "")
-        }, None
+    sorted_occs = sorted(occurrences_with_distance, key=lambda x: x["distance_km"])
+    top_n = sorted_occs[:top_n]
+
+    if top_n:
+        formatted = []
+        for occ in top_n:
+            formatted.append({
+                "species": species,
+                "gbifKey": occ["key"],
+                "lat": occ["decimalLatitude"],
+                "lon": occ["decimalLongitude"],
+                "distance_km": occ["distance_km"],
+                "eventDate": occ.get("eventDate", ""),
+                "country": occ.get("country", ""),
+                "locality": occ.get("locality", ""),
+                "datasetKey": occ.get("datasetKey", "")
+            })
+        return formatted, None
     else:
         return None, species
 
@@ -185,7 +193,7 @@ def main(args):
     # Parallel processing using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = {
-            executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir): sp
+            executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir, args.top_n): sp
             for sp in to_process
         }
         for i, future in enumerate(as_completed(futures), 1):
@@ -193,7 +201,7 @@ def main(args):
             try:
                 res, no_hit = future.result()
                 if res:
-                    results.append(res)
+                    results.extend(res)
                     print(f"[{i}/{len(to_process)}] {sp}")
                 elif no_hit:
                     no_hits.append({"species": no_hit})
@@ -203,7 +211,7 @@ def main(args):
                 no_hits.append({"species": sp})
 
     # Save everything again (including previous results)
-    pd.DataFrame(results).drop_duplicates(subset=["species"]).to_csv(args.output_csv, index=False)
+    pd.DataFrame(results).to_csv(args.output_csv, index=False)
     print(f"\nResults saved to: {args.output_csv}")
 
     if no_hits:
@@ -219,6 +227,8 @@ if __name__ == "__main__":
     parser.add_argument("--ref_lat", type=float, default=40.3397, help="Reference latitude (e.g., sample site).")
     parser.add_argument("--ref_lon", type=float, default=-7.6120, help="Reference longitude.")
     parser.add_argument("--radius", type=float, default=20, help="Maximum search radius in kilometers.")
+    parser.add_argument("--top_n", type=int, default=1, choices=range(1, 11),
+                        help="Number of closest occurrences to return per species (max: 10).")
     parser.add_argument("--cache_dir", default="cache", help="Directory to store cached GBIF responses.")
     parser.add_argument("--threads", type=int, default=5, help="Number of threads to use.")
     args = parser.parse_args()

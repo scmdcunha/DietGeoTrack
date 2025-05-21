@@ -69,7 +69,7 @@ def bbox_from_radius(lat, lon, radius_km):
     delta_lon = radius_km / (111.0 * cos(radians(lat)))
     return (lat - delta_lat, lat + delta_lat, lon - delta_lon, lon + delta_lon)
 
-def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n):
+def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min_year=None):
     """
     Searches the GBIF API for occurrences of a given species within a specified radius,
     and returns the closest one to the reference point.
@@ -104,6 +104,9 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n):
                 "limit": limit,
                 "offset": offset
             }
+
+            if min_year:
+                params["year.gte"] = min_year
 
             r = requests.get(base_url, params=params)
             if r.status_code != 200:
@@ -193,7 +196,7 @@ def main(args):
     # Parallel processing using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = {
-            executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir, args.top_n): sp
+            executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir, args.top_n, args.min_year): sp
             for sp in to_process
         }
         for i, future in enumerate(as_completed(futures), 1):
@@ -229,6 +232,8 @@ if __name__ == "__main__":
     parser.add_argument("--radius", type=float, default=20, help="Maximum search radius in kilometers.")
     parser.add_argument("--top_n", type=int, default=1, choices=range(1, 11),
                         help="Number of closest occurrences to return per species (max: 10).")
+    parser.add_argument("--min_year", type=int, default=None,
+                        help="Minimum year for GBIF occurrences (e.g., 2000). Only records from this year onward will be used.")
     parser.add_argument("--cache_dir", default="cache", help="Directory to store cached GBIF responses.")
     parser.add_argument("--threads", type=int, default=5, help="Number of threads to use.")
     args = parser.parse_args()

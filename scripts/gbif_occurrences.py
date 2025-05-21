@@ -165,11 +165,28 @@ def main(args):
     os.makedirs(args.cache_dir, exist_ok=True)
     results, no_hits = [], []
 
+    # If an output file already exists, load the existing results
+    already_processed = set()
+    if Path(args.output_csv).exists():
+        existing_df = pd.read_csv(args.output_csv)
+        already_processed = set(existing_df["species"].dropna().unique())
+        results = existing_df.to_dict(orient="records")
+        print(f"Resuming: {len(already_processed)} species already processed.")
+
+    if Path(args.no_occurrences_csv).exists():
+        no_hits_df = pd.read_csv(args.no_occurrences_csv)
+        already_processed.update(no_hits_df["species"].dropna().unique())
+        no_hits = no_hits_df.to_dict(orient="records")
+
+    # Filter only species not already processed
+    to_process = [sp for sp in species_list if sp not in already_processed]
+    print(f"Species left to process: {len(to_process)}")
+
     # Parallel processing using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = {
             executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir): sp
-            for sp in species_list
+            for sp in to_process
         }
         for i, future in enumerate(as_completed(futures), 1):
             sp = futures[future]
@@ -177,19 +194,20 @@ def main(args):
                 res, no_hit = future.result()
                 if res:
                     results.append(res)
-                    print(f"[{i}/{len(species_list)}] {sp}")
+                    print(f"[{i}/{len(to_process)}] {sp}")
                 elif no_hit:
                     no_hits.append({"species": no_hit})
-                    print(f"[{i}/{len(species_list)}] No occurrence: {sp}")
+                    print(f"[{i}/{len(to_process)}] No occurrence: {sp}")
             except Exception as e:
-                print(f"[{i}/{len(species_list)}] Error with {sp}: {e}")
+                print(f"[{i}/{len(to_process)}] Error with {sp}: {e}")
                 no_hits.append({"species": sp})
 
-    pd.DataFrame(results).to_csv(args.output_csv, index=False)
+    # Save everything again (including previous results)
+    pd.DataFrame(results).drop_duplicates(subset=["species"]).to_csv(args.output_csv, index=False)
     print(f"\nResults saved to: {args.output_csv}")
 
     if no_hits:
-        pd.DataFrame(no_hits).to_csv(args.no_occurrences_csv, index=False)
+        pd.DataFrame(no_hits).drop_duplicates(subset=["species"]).to_csv(args.no_occurrences_csv, index=False)
         print(f"Species without occurrences saved to: {args.no_occurrences_csv}")
 
 if __name__ == "__main__":

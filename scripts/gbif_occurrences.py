@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to find the closest GBIF occurrence for each species listed in a CSV file.
+Script to find the closest GBIF occurrence(s) for each species listed in a CSV file.
 
 For each scientific species name in the input CSV, the script queries the GBIF API
 to retrieve occurrence records within a specified radius from a reference geographic
@@ -22,6 +22,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from osgeo import ogr, osr
 from math import radians, cos
+from datetime import datetime
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """
@@ -105,20 +106,16 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
                 "offset": offset
             }
 
-            if min_year:
-                params["year.gte"] = min_year
-
             r = requests.get(base_url, params=params)
             if r.status_code != 200:
                 print(f"[Error] GBIF API call failed for {species} (status {r.status_code})")
                 return None, species
 
             results = r.json().get("results", [])
-            occurrences += results
+            occurrences.extend(results)
 
             if offset + limit >= r.json().get("count", 0):
                 break
-
             offset += limit
             time.sleep(0.2)  # Avoid overloading the API
 
@@ -128,22 +125,44 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
     if not occurrences:
         return None, species
 
+    if min_year is not None:
+        filtered_occurrences = []
+        for occ in occurrences:
+            event_date = occ.get("eventDate", "")
+            if event_date:
+                try:
+                    year = int(event_date[:4])
+                    if year >= min_year:
+                        filtered_occurrences.append(occ)
+                except ValueError:
+                    # Ignorar datas mal formatadas
+                    pass
+        occurrences = filtered_occurrences
+
+    if not occurrences:
+        return None, species
+
     # Identify closest occurrence to reference point
     occurrences_with_distance = []
     for occ in occurrences:
-        lat, lon = occ.get("decimalLatitude"), occ.get("decimalLongitude")
+        lat = occ.get("decimalLatitude")
+        lon = occ.get("decimalLongitude")
         if lat is None or lon is None:
             continue
         dist = calculate_distance_gdal(ref_lat, ref_lon, lat, lon)
-        occ["distance_km"] = round(dist, 2)
-        occurrences_with_distance.append(occ)
+        if dist <= radius_km:
+            occ["distance_km"] = round(dist, 2)
+            occurrences_with_distance.append(occ)
+
+    if not occurrences_with_distance:
+        return None, species
 
     sorted_occs = sorted(occurrences_with_distance, key=lambda x: x["distance_km"])
-    top_n = sorted_occs[:top_n]
+    closest_occurrences = sorted_occs[:top_n]
 
-    if top_n:
+    if closest_occurrences:
         formatted = []
-        for occ in top_n:
+        for occ in closest_occurrences:
             formatted.append({
                 "species": species,
                 "gbifKey": occ["key"],
@@ -222,19 +241,18 @@ def main(args):
         print(f"Species without occurrences saved to: {args.no_occurrences_csv}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Find the closest GBIF occurrence for each species.")
-    parser.add_argument("--input_csv", required=True, help="Path to input CSV file with scientific names.")
-    parser.add_argument("--column", required=True, help="Column name containing scientific names.")
-    parser.add_argument("--output_csv", required=True, help="Path to save the results CSV.")
-    parser.add_argument("--no_occurrences_csv", default="no_occurrences.csv", help="Path to save species with no matches.")
-    parser.add_argument("--ref_lat", type=float, default=40.3397, help="Reference latitude (e.g., sample site).")
+    parser = argparse.ArgumentParser(description="Find the closest GBIF occurrence(s) for each species.")
+    parser.add_argument("--input_csv", required=True, help="Input CSV with species names.")
+    parser.add_argument("--column", required=True, help="Column name with scientific names.")
+    parser.add_argument("--output_csv", required=True, help="CSV file to save results.")
+    parser.add_argument("--no_occurrences_csv", default="no_occurrences.csv", help="CSV for species with no occurrences.")
+    parser.add_argument("--ref_lat", type=float, default=40.3397, help="Reference latitude.")
     parser.add_argument("--ref_lon", type=float, default=-7.6120, help="Reference longitude.")
-    parser.add_argument("--radius", type=float, default=20, help="Maximum search radius in kilometers.")
+    parser.add_argument("--radius", type=float, default=20, help="Search radius in km.")
     parser.add_argument("--top_n", type=int, default=1, choices=range(1, 11),
-                        help="Number of closest occurrences to return per species (max: 10).")
-    parser.add_argument("--min_year", type=int, default=None,
-                        help="Minimum year for GBIF occurrences (e.g., 2000). Only records from this year onward will be used.")
-    parser.add_argument("--cache_dir", default="cache", help="Directory to store cached GBIF responses.")
-    parser.add_argument("--threads", type=int, default=5, help="Number of threads to use.")
+                        help="Number of closest occurrences to return per species (1-10).")
+    parser.add_argument("--min_year", type=int, default=None, help="Minimum year for occurrences.")
+    parser.add_argument("--cache_dir", default="cache", help="Cache directory.")
+    parser.add_argument("--threads", type=int, default=5, help="Number of threads.")
     args = parser.parse_args()
     main(args)

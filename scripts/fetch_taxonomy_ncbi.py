@@ -1,6 +1,7 @@
 from Bio import Entrez, SeqIO
 from ete3 import NCBITaxa
 from pathlib import Path
+import pandas as pd
 import csv
 import time
 import argparse
@@ -8,11 +9,10 @@ import argparse
 # Initialize NCBI Taxa
 ncbi = NCBITaxa()
 
-def read_ids(file_path):
-    """Read accession IDs from a file."""
-    with open(file_path, 'r') as file:
-        ids = [line.strip() for line in file if line.strip()]
-    return ids
+def read_sseqids_from(file_path):
+    """Read accession IDs from a resulting BLAST/VSEARCH output file."""
+    df = pd.read_csv(file_path, sep='\t')
+    return df['sseqid'].drop_duplicates().tolist()
 
 def fetch_taxonomy(accession_id):
     """
@@ -63,7 +63,7 @@ def save_to_csv(results, output_file):
         writer.writerows(results)
 
 def main(input_file, output_file):
-    ids = read_ids(input_file)
+    ids = read_sseqids_from(input_file)
     print(f"Fetched {len(ids)} accession IDs.")
 
     batch_size = 100

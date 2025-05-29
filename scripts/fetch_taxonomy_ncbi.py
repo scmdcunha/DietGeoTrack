@@ -1,4 +1,3 @@
-from requests import api
 from Bio import Entrez, SeqIO
 from ete3 import NCBITaxa
 from pathlib import Path
@@ -71,12 +70,13 @@ def fetch_taxonomy_wrapper(args):
 
 def save_to_csv(results, output_file):
     """Saves list of taxonomy dicts to CSV."""
-    fieldnames = ["Query ID",   "Accession ID", "Order", "Family", "Genus", "Species"]
-    with open(output_file, 'a', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
+    fieldnames = ["Query ID", "Accession ID", "Order", "Family", "Genus", "Species"]
+    with open(output_file, 'a', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';', quoting=csv.QUOTE_MINIMAL)
         if csvfile.tell() == 0:
             writer.writeheader()
         writer.writerows(results)
+
 
 def main(input_file, output_file, email, api_key=None, threads=cpu_count()):
     pairs = read_accession_query_pairs(input_file)

@@ -1,3 +1,16 @@
+#!/usr/bin/env python3
+"""
+Script to fetch taxonomy information from NCBI for given accession IDs obtained from BLAST results.
+
+It reads a tab-separated BLAST output file with query and subject accession IDs,
+fetches taxonomic information (order, family, genus, species) for each accession from NCBI,
+and saves the taxonomy results into a CSV file.
+
+Supports parallel processing and respects NCBI request rate limits.
+
+Requires: Biopython, ete3, pandas, tqdm
+"""
+
 from Bio import Entrez, SeqIO
 from ete3 import NCBITaxa
 from pathlib import Path
@@ -16,7 +29,15 @@ csv_lock = Lock()
 fail_lock = Lock()
 
 def read_accession_query_pairs(file_path):
-    """Read qseqid and sseqid pairs from BLAST output file."""
+    """
+    Read unique query-subject accession ID pairs from BLAST tabular output.
+
+    Parameters:
+        file_path (str or Path): Path to BLAST output file in tab-separated format.
+
+    Returns:
+        List of [query_id, accession_id] pairs (list of lists).
+    """
     df = pd.read_csv(file_path, sep='\t', header=None)
     df.columns = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart",
                   "qend", "sstart", "send", "evalue", "bitscore"]
@@ -26,7 +47,17 @@ def read_accession_query_pairs(file_path):
 
 def fetch_taxonomy_wrapper(args):
     """
-    Fetches taxonomy for a given accession ID from NCBI and returns a dictionary.
+    Fetch taxonomy data from NCBI for a single accession ID.
+
+    Uses Entrez to fetch GenBank record, extracts organism name,
+    and retrieves taxonomic lineage via ete3.
+
+    Parameters:
+        args (tuple): (query_id, accession_id, email, api_key)
+
+    Returns:
+        dict with taxonomy info (Query ID, Accession ID, Order, Family, Genus, Species),
+        or dict with error info if failed.
     """
     query_id, accession_id, email, api_key = args
     Entrez.email = email
@@ -69,7 +100,15 @@ def fetch_taxonomy_wrapper(args):
         return {"error": True, "query_id": query_id, "accession_id": accession_id, "message": str(e)}
 
 def save_to_csv(results, output_file):
-    """Saves list of taxonomy dicts to CSV."""
+    """
+    Append a list of taxonomy dictionaries to the output CSV file.
+
+    Writes header if file is empty.
+
+    Parameters:
+        results (list of dict): Taxonomy records to save.
+        output_file (str or Path): Path to CSV output file.
+    """
     fieldnames = ["Query ID", "Accession ID", "Order", "Family", "Genus", "Species"]
     with open(output_file, 'a', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';', quoting=csv.QUOTE_MINIMAL)
@@ -79,6 +118,17 @@ def save_to_csv(results, output_file):
 
 
 def main(input_file, output_file, email, api_key=None, threads=cpu_count()):
+    """
+    Main processing function: reads accession pairs, fetches taxonomy in parallel,
+    and saves results to CSV. Logs failed accession IDs.
+
+    Parameters:
+        input_file (str or Path): Path to BLAST output file.
+        output_file (str or Path): Path to save taxonomy CSV.
+        email (str): Email for NCBI Entrez API.
+        api_key (str, optional): NCBI API key.
+        threads (int): Number of parallel processes.
+    """
     pairs = read_accession_query_pairs(input_file)
     print(f"Fetched {len(pairs)} (query, accession) pairs.")
 

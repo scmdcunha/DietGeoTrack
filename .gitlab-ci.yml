@@ -2,9 +2,17 @@ image: python:3.12
 
 stages:
     - lint
+    - test
 
 flake8:
     stage: lint
     script:
         - pip install flake8
         - flake8 scripts/ --ignore=E501,W503,E302,E128,E305
+
+pytest:
+    stage: test
+    script:
+        - pip install -r requirements.txt
+        - pip install pytest
+        - PYTHONPATH=. pytest tests/

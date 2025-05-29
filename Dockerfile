@@ -1,16 +1,27 @@
-FROM snakemake/snakemake:v9.1.7
+#
+# DietGeoTrack Dockerfile
+#
 
+# Pull base image
+FROM snakemake/snakemake:v9.1.7
+SHELL ["/bin/bash", "-c"]
 WORKDIR /data
 
-# Copy environment.yml into the container
-COPY environment.yml /tmp/environment.yml
+# Install all necessary software
+RUN micromamba create -n metabarcoding -y \
+    -c bioconda -c conda-forge \
+    blast=2.13.0 \
+    vsearch=2.22.1 \
+    pandas=2.2.2 \
+    plotly=5.21.0 \
+    folium=0.16.0 \
+    requests=2.31.0 \
+    tqdm=4.66.2 \
+    biopython=1.83 \
+    ete3=3.1.3 \
+    osgeo \
+    python=3.10
 
-# Create metabarcoding environment with micromamba
-RUN micromamba create -y -n metabarcoding -f /tmp/environment.yml -c conda-forge -c bioconda \
-    && micromamba clean --all --yes
-
-# Ensures the environment is in the PATH
 ENV PATH="/opt/conda/envs/metabarcoding/bin:$PATH"
 
-# Use bash by default
 CMD ["/bin/bash"]

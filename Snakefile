@@ -1,16 +1,22 @@
+import yaml
 from pathlib import Path
 
-SAMPLES = "data/guano_samples.fasta"
-REFERENCE = "data/arthropoda.fasta"
-BLAST_DB_PREFIX = "data/arthropoda.blastdb"
+configfile: "config.yaml"
+
+SAMPLES = config["samples"]
+REFERENCE = config["reference"]
+BLAST_DB_PREFIX = config["blast_db_prefix"]
+RESULTS = config["results_dir"]
+CACHE_DIR = config["cache_dir"]
+PERC_IDENTITY = config["perc_identity"]
+ref_lat = config["ref_lat"]
+ref_lon = config["ref_lon"]
 
 rule all:
     input:
-        "results/blast/arthropoda.blast.tsv",
-        "results/blast/arthropoda.blast.top3.tsv",
-        "results/blast/arthropoda.blast.top3.unique.ids.txt",
-        "results/vsearch/arthropoda.vsearch.tsv"
-
+        f"{RESULTS}/arthropoda.blast.tsv",
+        f"{RESULTS}/arthropoda.blast.top3.tsv",
+        f"{RESULTS}/species_without_occurrence.csv"
 
 rule make_blast_db:
     input:
@@ -28,10 +34,10 @@ rule run_blast:
         query=SAMPLES,
         db_flag="data/.blastdb_created"
     output:
-        "results/blast/arthropoda.blast.tsv"
+        f"{RESULTS}/arthropoda.blast.tsv"
     params:
         db_prefix=BLAST_DB_PREFIX,
-        perc_identity=95
+        perc_identity=PERC_IDENTITY
     threads: 4
     shell:
         """
@@ -43,57 +49,48 @@ rule run_blast:
             -perc_identity {params.perc_identity} \
             -num_threads {threads}
         """
+
 rule filter_top3_blast_hits:
     input:
-        "results/blast/arthropoda.blast.tsv"
+        f"{RESULTS}/arthropoda.blast.tsv"
     output:
-        "results/blast/arthropoda.blast.top3.tsv"
+        f"{RESULTS}/arthropoda.blast.top3.tsv"
     shell:
         """
         python3 scripts/blast_top3_hits.py {input} {output}
         """
-rule extract_blast_unique_ids:
+
+rule fetch_taxonomy:
     input:
-        "results/blast/arthropoda.blast.top3.tsv"
+        f"{RESULTS}/arthropoda.blast.top3.tsv"
     output:
-        "results/blast/arthropoda.blast.top3.unique.ids.txt"
+        f"{RESULTS}/arthropoda.taxonomy.csv"
     shell:
         """
-            cut -f2 {input} | sort | uniq > {output}
-        """
-rule run_vsearch:
-    input:
-        query=SAMPLES,
-        db=REFERENCE
-    output:
-        "results/vsearch/arthropoda.vsearch.tsv"
-    params:
-        identity=0.95
-    threads: 4
-    shell:
-        """
-        vsearch --usearch_global {input.query} \
-                --db {input.db} \
-                --id {params.identity} \
-                --blast6out {output} \
-                --threads {threads}
-        """
-rule filter_top3_vsearch_hits:
-    input:
-        "results/vsearch/arthropoda.vsearch.tsv"
-    output:
-        "results/vsearch/arthropoda.vsearch.top3.tsv"
-    shell:
-        """
-        python3 scripts/vsearch_top3_hits.py {input} {output}
+        python3 scripts/fetch_taxonomy_ncbi.py \
+        --input {input} \
+        --output {output} \
+        --email {config[email]} \
+        --api_key {config[api_key]} \
+        --threads {config[threads]}
         """
 
-rule extract_vsearch_unique_ids:
+rule fetch_occurrences:
     input:
-        "results/vsearch/arthropoda.vsearch.top3.tsv"
+        f"{RESULTS}/arthropoda.taxonomy.csv"
     output:
-        "results/vsearch/arthropoda.vsearch.top3.unique.ids.txt"
+        f"{RESULTS}/arthropoda.occurrences.csv",
+        f"{RESULTS}/species_without_occurrence.csv"
     shell:
         """
-            cut -f2 {input} | sort | uniq > {output}
+        python3 scripts/gbif_closest_occurrence.py \
+        --input_csv {input} \
+        --column Species \
+        --output_csv {output[0]} \
+        --no_occurrences_csv {output[1]} \
+        --ref_lat {config[ref_lat]} \
+        --ref_lon {config[ref_lon]} \
+        --radius {config[radius]} \
+        --cache_dir {CACHE_DIR} \
+        --threads {config[threads]}
         """

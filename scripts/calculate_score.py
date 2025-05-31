@@ -1,7 +1,6 @@
 import pandas as pd
 import argparse
 from datetime import datetime
-import numpy as np
 
 def load_data(blast_file, taxonomy_file, gbif_file):
     blast_df = pd.read_csv(blast_file, sep='\t', header=None)

@@ -81,7 +81,7 @@ rule fetch_taxonomy:
         threads=config["taxonomy_threads"]
     shell:
         # Run the taxonomy fetching script to retrieve taxonomic info for BLAST hits
-        "python {params.script} --input {input} --output {output} "
+        "micromamba run -n metabarcoding python {params.script} --input {input} --output {output} "
         "--email {params.email} {params.api_key_arg} --threads {params.threads}"
 
 rule fetch_occurrences:
@@ -102,7 +102,7 @@ rule fetch_occurrences:
         threads=config["occ_threads"]
     shell:
         # Run occurrences fetching script querying GBIF API with parameters
-        "python {params.script} --input_csv {input} --column {params.column} "
+        "micromamba run -n metabarcoding python {params.script} --input_csv {input} --column {params.column} "
         "--output_csv {output.gbif} --no_occurrences_csv {output.no_occ} "
         "--ref_lat {params.lat} --ref_lon {params.lon} --radius {params.radius} "
         "--top_n {params.top_n} {params.min_year_arg} "
@@ -124,7 +124,7 @@ rule calculate_score:
     shell:
         # Calculate combined score integrating identity, distance, and date using the scoring script
         """
-        python {params.script} \
+        micromamba run -n metabarcoding python {params.script} \
         --blast {input.blast} \
         --taxonomy {input.taxonomy} \
         --gbif {input.gbif} \

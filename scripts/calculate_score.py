@@ -75,7 +75,7 @@ def preprocess_data(blast_df, taxonomy_df, gbif_df):
     merged = pd.merge(merged, gbif_df, how='left', on='Species')
     return merged
 
-def calculate_score(df, w_identity=1/3, w_distance=1/3, w_date=1/3):
+def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3):
     """
     Calculate a combined validation score based on percent identity,
     geographic distance, and date of occurrence.
@@ -123,7 +123,6 @@ def calculate_score(df, w_identity=1/3, w_distance=1/3, w_date=1/3):
         + complete_rows['date_score'] * w_date
     )
 
-
     complete_rows = complete_rows.sort_values(by='Score', ascending=False)
     complete_rows['Score'] = complete_rows['Score'].round(3)
 
@@ -164,9 +163,9 @@ def main():
     parser.add_argument("--gbif", required=True, help="GBIF occurrences CSV input file")
     parser.add_argument("--output", default="final_scores.csv", help="Output file for scored results")
     parser.add_argument("--missing", default="missing_data.csv", help="Output file for missing data rows")
-    parser.add_argument("--w_identity", type=float, default=1/3, help="Weight for identity score (default 1/3)")
-    parser.add_argument("--w_distance", type=float, default=1/3, help="Weight for distance score (default 1/3)")
-    parser.add_argument("--w_date", type=float, default=1/3, help="Weight for date score (default 1/3)")
+    parser.add_argument("--w_identity", type=float, default=1 / 3, help="Weight for identity score (default 1/3)")
+    parser.add_argument("--w_distance", type=float, default=1 / 3, help="Weight for distance score (default 1/3)")
+    parser.add_argument("--w_date", type=float, default=1 / 3, help="Weight for date score (default 1/3)")
 
     args = parser.parse_args()
 

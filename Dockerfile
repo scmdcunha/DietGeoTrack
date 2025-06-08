@@ -8,7 +8,7 @@ SHELL ["/bin/bash", "-c"]
 WORKDIR /data
 
 # Install all necessary software
-RUN micromamba create -n metabarcoding -y \
+RUN MAMBA_NO_BANNER=1 micromamba create -n metabarcoding -y \
     -c bioconda -c conda-forge \
     blast=2.13.0 \
     vsearch=2.22.1 \
@@ -19,7 +19,7 @@ RUN micromamba create -n metabarcoding -y \
     tqdm=4.66.2 \
     biopython=1.83 \
     ete3=3.1.3 \
-    osgeo \
+    gdal=3.6.2 \
     python=3.10
 
 ENV PATH="/opt/conda/envs/metabarcoding/bin:$PATH"

@@ -39,6 +39,7 @@ rule makeblastdb:
         # Create a nucleotide BLAST database from the reference FASTA
         "makeblastdb -in {input.fasta} -dbtype nucl -out {params.db_prefix}"
 
+# blast rule
 rule run_blast:
     input:
         query=config["blast_query"],                 # Query sequences to BLAST

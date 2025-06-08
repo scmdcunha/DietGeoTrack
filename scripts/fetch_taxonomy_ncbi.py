@@ -39,8 +39,7 @@ def read_accession_query_pairs(file_path):
         List of [query_id, accession_id] pairs (list of lists).
     """
     df = pd.read_csv(file_path, sep='\t', header=None)
-    df.columns = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart",
-                  "qend", "sstart", "send", "evalue", "bitscore"]
+    df.columns = ["qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"]
     pairs = df.drop_duplicates(subset=["qseqid", "sseqid"])[["qseqid", "sseqid"]]
     return pairs.values.tolist()  # returns list of [qseqid, sseqid]
 

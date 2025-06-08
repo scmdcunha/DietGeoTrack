@@ -118,10 +118,11 @@ def calculate_score(df, w_identity=1/3, w_distance=1/3, w_date=1/3):
     complete_rows['date_score'] = complete_rows['date_score'].fillna(0)
 
     complete_rows['Score'] = (
-        complete_rows['identity_score'] * w_identity +
-        complete_rows['distance_score'] * w_distance +
-        complete_rows['date_score'] * w_date
+        complete_rows['identity_score'] * w_identity
+        + complete_rows['distance_score'] * w_distance
+        + complete_rows['date_score'] * w_date
     )
+
 
     complete_rows = complete_rows.sort_values(by='Score', ascending=False)
     complete_rows['Score'] = complete_rows['Score'].round(3)

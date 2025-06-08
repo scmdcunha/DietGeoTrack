@@ -22,6 +22,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from osgeo import ogr, osr
 from math import radians, cos
+from dateutil import parser as dateparser
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """
@@ -130,11 +131,10 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
             event_date = occ.get("eventDate", "")
             if event_date:
                 try:
-                    year = int(event_date[:4])
-                    if year >= min_year:
+                    parsed_date = dateparser.parse(event_date)
+                    if parsed_date.year >= min_year:
                         filtered_occurrences.append(occ)
-                except ValueError:
-                    # Ignorar datas mal formatadas
+                except (ValueError, OverflowError, TypeError):
                     pass
         occurrences = filtered_occurrences
 
@@ -184,7 +184,7 @@ def main(args):
 
     Results are saved to two CSVs: one with valid occurrences and one with missing data.
     """
-    df = pd.read_csv(args.input_csv)
+    df = pd.read_csv(args.input_csv, sep=";")
     if args.column not in df.columns:
         raise ValueError(f"Column '{args.column}' not found in the input CSV.")
 
@@ -252,6 +252,6 @@ if __name__ == "__main__":
                         help="Number of closest occurrences to return per species (1-10).")
     parser.add_argument("--min_year", type=int, default=None, help="Minimum year for occurrences.")
     parser.add_argument("--cache_dir", default="cache", help="Cache directory.")
-    parser.add_argument("--threads", type=int, default=5, help="Number of threads.")
+    parser.add_argument("--threads", type=int, default=4, help="Number of threads.")
     args = parser.parse_args()
     main(args)

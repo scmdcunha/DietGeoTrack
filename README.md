@@ -58,19 +58,12 @@ To start the container and mount the current directory inside it (so you can acc
 docker run -it --rm -v "$(pwd)":/app diet-geo-track bash
 ```
 
-### 5. Activate the environment inside the container
 
-Once inside the container, activate the Micromamba environment:
-
-```bash
-micromamba activate metabarcoding
-```
-
-### 6. Configure your parameters in `config.yaml`
+### 5. Configure your parameters in `config.yaml`
 
 Edit the `config.yaml` file to set your specific parameters (see below for detailed explanations and an example).
 
-### 7. Run the pipeline with Snakemake
+### 6. Run the pipeline with Snakemake
 
 Run the workflow specifying the number of CPU cores and your config file:
 

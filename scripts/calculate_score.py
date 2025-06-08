@@ -1,9 +1,43 @@
+#!/usr/bin/env python3
+"""
+This script calculates a validation score for taxonomic identification results
+by integrating BLAST identity percentages, geographic distances from GBIF occurrence data,
+and temporal data (dates of occurrence records).
+
+The script processes three input files:
+- A BLAST output file (TSV format) containing sequence alignment results.
+- A taxonomy file (CSV format) with taxonomic information linked to query and accession IDs.
+- A GBIF occurrences file (CSV format) with species occurrence data including geographic distance
+  and event dates.
+
+The script merges these datasets, computes a combined score weighting identity, distance, and date,
+and outputs two files:
+- A scored results file with the final validation scores.
+- A file containing rows where key data (distance or date) was missing.
+
+Weights for each component of the score can be customized via command line arguments.
+
+Usage example:
+python calculate_score.py --blast blast_results.tsv --taxonomy taxonomy.csv --gbif gbif_occurrences.csv --output final_scores.csv --missing missing_data.csv
+"""
+
 import pandas as pd
 import argparse
 from datetime import datetime
 from dateutil import parser as dateparser
 
 def load_data(blast_file, taxonomy_file, gbif_file):
+    """
+    Load and format the input data files.
+
+    Parameters:
+    blast_file (str): Path to the BLAST TSV file.
+    taxonomy_file (str): Path to the taxonomy CSV file.
+    gbif_file (str): Path to the GBIF occurrences CSV file.
+
+    Returns:
+    tuple: DataFrames for blast, taxonomy, and gbif data.
+    """
     blast_df = pd.read_csv(blast_file, sep='\t', header=None)
     blast_df.columns = [
         "Query_ID", "Accession", "Percent Identity", "Alignment Length", "Mismatches",
@@ -26,12 +60,35 @@ def load_data(blast_file, taxonomy_file, gbif_file):
     return blast_df, taxonomy_df, gbif_df
 
 def preprocess_data(blast_df, taxonomy_df, gbif_df):
-    merged = pd.merge(blast_df, taxonomy_df, how='left', on=['Query_ID', 'Accession'])
+    """
+    Merge the BLAST, taxonomy, and GBIF data into a single DataFrame.
 
+    Parameters:
+    blast_df (DataFrame): BLAST results.
+    taxonomy_df (DataFrame): Taxonomy information.
+    gbif_df (DataFrame): GBIF occurrences.
+
+    Returns:
+    DataFrame: Merged data containing all relevant fields.
+    """
+    merged = pd.merge(blast_df, taxonomy_df, how='left', on=['Query_ID', 'Accession'])
     merged = pd.merge(merged, gbif_df, how='left', on='Species')
     return merged
 
 def calculate_score(df, w_identity=1/3, w_distance=1/3, w_date=1/3):
+    """
+    Calculate a combined validation score based on percent identity,
+    geographic distance, and date of occurrence.
+
+    Parameters:
+    df (DataFrame): Merged DataFrame with necessary columns.
+    w_identity (float): Weight for identity score component.
+    w_distance (float): Weight for distance score component.
+    w_date (float): Weight for date score component.
+
+    Returns:
+    tuple: (DataFrame with scores for complete data rows, DataFrame with incomplete data rows)
+    """
     df['Percent Identity'] = pd.to_numeric(df['Percent Identity'], errors='coerce')
     df['Distance_km'] = pd.to_numeric(df['Distance_km'], errors='coerce')
 
@@ -72,6 +129,15 @@ def calculate_score(df, w_identity=1/3, w_distance=1/3, w_date=1/3):
     return complete_rows, incomplete_rows
 
 def save_output(scored_df, missing_df, scored_file, missing_file):
+    """
+    Save the scored data and incomplete data to output files.
+
+    Parameters:
+    scored_df (DataFrame): DataFrame with computed scores.
+    missing_df (DataFrame): DataFrame with missing distance or date data.
+    scored_file (str): Output file path for scored data.
+    missing_file (str): Output file path for missing data.
+    """
     scored_df = scored_df.rename(columns={'Query_ID': 'Query ID', 'Accession': 'Accession ID'})
 
     cols = ['Query ID', 'Accession ID', 'Percent Identity',

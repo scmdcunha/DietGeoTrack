@@ -110,14 +110,14 @@ rule run_vsearch:
     output:
         "results/vsearch/vsearch_output.tsv"
     params:
-        identity=config["min_identity"]
+        identity=lambda wildcards, config=config: float(config["min_identity"]) / 100.0
     shell:
         """
-               vsearch --usearch_global {input.query} \
-                       --db {input.reference} \
-                       --id {params.identity} \
-                       --blast6out {output}
-               """
+        vsearch --usearch_global {input.query} \
+            --db {input.reference} \
+            --id {params.identity} \
+            --blast6out {output}
+        """
 
 rule run_alignment:
     input:

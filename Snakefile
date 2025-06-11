@@ -28,9 +28,31 @@ rule create_dirs:
         os.makedirs("results/occurrences", exist_ok=True)
         os.makedirs("results/scores", exist_ok=True)
 
+rule validate_reference_fasta:
+    input:
+        fasta=config["reference_fasta"]
+    output:
+        temp("results/db/reference_checked.ok")
+    params:
+        script="scripts/validate_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} && touch {output}"
+
+rule validate_query_fasta:
+    input:
+        fasta=config["blast_query"]
+    output:
+        temp("results/blast/query_checked.ok")
+    params:
+        script="scripts/validate_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} && touch {output}"
+
+
 rule makeblastdb:
     input:
-        fasta=config["reference_fasta"]  # Reference FASTA for local BLAST database
+        fasta=config["reference_fasta"],  # Reference FASTA for local BLAST database
+        check="results/db/reference_checked.ok"
     output:
         db_nsq="results/db/arthropoda_local_db.nsq"  # Indicator file that BLAST DB is created
     params:
@@ -43,7 +65,8 @@ rule makeblastdb:
 rule run_blast:
     input:
         query=config["blast_query"],                 # Query sequences to BLAST
-        db_nsq="results/db/arthropoda_local_db.nsq" # BLAST DB index file
+        db_nsq="results/db/arthropoda_local_db.nsq", # BLAST DB index file
+        check="results/blast/query_checked.ok"
     output:
         "results/blast/blast_output.tsv"  # BLAST results in tabular format
     params:

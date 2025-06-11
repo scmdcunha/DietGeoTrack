@@ -1,4 +1,3 @@
-from osgeo.osr import OAO_South
 from Bio import SeqIO
 import sys
 

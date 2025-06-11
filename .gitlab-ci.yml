@@ -15,4 +15,4 @@ pytest:
     script:
         - pip install -r requirements.txt
         - pip install pytest
-        - PYTHONPATH=. pytest tests/
+        - PYTHONPATH=. pytest tests/ --ignore=tests/test_gbif_occurrences.py

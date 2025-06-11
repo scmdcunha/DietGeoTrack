@@ -14,10 +14,17 @@ import os
 
 configfile: "config.yaml"
 
+# ----------------------------
+# Rule: all - final workflow output
+# ----------------------------
 rule all:
     input:
         # Final output file containing the validation scores
         "results/scores/final_scores.csv"
+
+# ----------------------------
+# Preprocessing rules
+# ----------------------------
 
 rule create_dirs:
     run:
@@ -50,6 +57,29 @@ rule validate_query_fasta:
     shell:
         "micromamba run -n metabarcoding python {params.script} {input.fasta} && touch {output}"
 
+rule validate_reference_upper:
+    input:
+        fasta=config["reference_fasta"]
+    output:
+        "results/db/reference_upper.fasta"
+    params:
+        script="scripts/validate_uppercase_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
+
+rule validate_query_upper:
+    input:
+        fasta=config["blast_query"]
+    output:
+        "results/db/query_upper.fasta"
+    params:
+        script="scripts/validate_uppercase_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
+
+# ----------------------------
+# Analysis rules (BLAST / VSEARCH, top hits, taxonomy, occurrences)
+# ----------------------------
 
 rule makeblastdb:
     input:
@@ -83,26 +113,7 @@ rule run_blast:
         "-num_threads {params.threads} -evalue 1e-5 "
         "| awk '$3 >= {params.identity}' > {output}"
 
-rule validate_reference_upper:
-    input:
-        fasta=config["reference_fasta"]
-    output:
-        "results/db/reference_upper.fasta"
-    params:
-        script="scripts/validate_uppercase_fasta.py"
-    shell:
-        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
-
-rule validate_query_upper:
-    input:
-        fasta=config["blast_query"]
-    output:
-        "results/db/query_upper.fasta"
-    params:
-        script="scripts/validate_uppercase_fasta.py"
-    shell:
-        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
-
+# vsearch rule
 rule run_vsearch:
     input:
         query="results/db/query_upper.fasta",
@@ -183,6 +194,10 @@ rule fetch_occurrences:
         "--top_n {params.top_n} {params.min_year_arg} "
         "--cache_dir {params.cache} --threads {params.threads}"
 
+# ----------------------------
+# Postprocessing rules (score calculation, cleaning)
+# ----------------------------
+
 rule calculate_score:
     input:
         blast="results/alignment/top_hits.tsv",
@@ -209,6 +224,10 @@ rule calculate_score:
         --w_distance {params.w_distance} \
         --w_date {params.w_date} \
         """
+
+# ----------------------------
+# Conditional rule activation (BLAST or VSEARCH)
+# ----------------------------
 
 if config["alignment_tool"] == "vsearch":
     use_rules = ["validate_reference_upper", "validate_query_upper", "run_vsearch", "run_alignment"]

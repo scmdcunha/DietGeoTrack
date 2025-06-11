@@ -23,6 +23,8 @@ rule create_dirs:
     run:
         # Create directories for results if they don't exist
         os.makedirs("results/blast", exist_ok=True)
+        os.makedirs("results/vsearch", exist_ok=True)
+        os.makedirs("results/alignment", exist_ok=True)
         os.makedirs("results/db", exist_ok=True)
         os.makedirs("results/taxonomy", exist_ok=True)
         os.makedirs("results/occurrences", exist_ok=True)
@@ -81,11 +83,60 @@ rule run_blast:
         "-num_threads {params.threads} -evalue 1e-5 "
         "| awk '$3 >= {params.identity}' > {output}"
 
+rule validate_reference_upper:
+    input:
+        fasta=config["reference_fasta"]
+    output:
+        "results/db/reference_upper.fasta"
+    params:
+        script="scripts/validate_uppercase_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
+
+rule validate_query_upper:
+    input:
+        fasta=config["blast_query"]
+    output:
+        "results/db/query_upper.fasta"
+    params:
+        script="scripts/validate_uppercase_fasta.py"
+    shell:
+        "micromamba run -n metabarcoding python {params.script} {input.fasta} {output}"
+
+rule run_vsearch:
+    input:
+        query="results/db/query_upper.fasta",
+        reference="results/db/reference_upper.fasta"
+    output:
+        "results/vsearch/vsearch_output.tsv"
+    params:
+        identity=config["min_identity"]
+    shell:
+        """
+               vsearch --usearch_global {input.query} \
+                       --db {input.reference} \
+                       --id {params.identity} \
+                       --blast6out {output}
+               """
+
+rule run_alignment:
+    input:
+        lambda wildcards: "results/blast/blast_output.tsv"
+        if config["alignment_tool"] == "blast"
+        else "results/vsearch/vsearch_output.tsv"
+    output:
+        "results/alignment/alignment_output.tsv"
+    run:
+        import shutil
+        os.makedirs("results/alignment", exist_ok=True)
+        shutil.copy(input[0], output[0])
+
+
 rule top_hits:
     input:
-        "results/blast/blast_output.tsv"
+        "results/alignment/alignment_output.tsv"
     output:
-        "results/blast/top_hits.tsv"
+        "results/alignment/top_hits.tsv"
     params:
         top_n=config["top_hits"]  # Number of top hits to keep per query
     shell:
@@ -95,7 +146,7 @@ rule top_hits:
 
 rule fetch_taxonomy:
     input:
-        "results/blast/top_hits.tsv"
+        "results/alignment/top_hits.tsv"
     output:
         "results/taxonomy/taxonomy.csv"
     params:
@@ -134,7 +185,7 @@ rule fetch_occurrences:
 
 rule calculate_score:
     input:
-        blast="results/blast/top_hits.tsv",
+        blast="results/alignment/top_hits.tsv",
         taxonomy="results/taxonomy/taxonomy.csv",
         gbif="results/occurrences/occurrences.csv"
     output:
@@ -158,3 +209,12 @@ rule calculate_score:
         --w_distance {params.w_distance} \
         --w_date {params.w_date} \
         """
+
+if config["alignment_tool"] == "vsearch":
+    use_rules = ["validate_reference_upper", "validate_query_upper", "run_vsearch", "run_alignment"]
+else:
+    use_rules = ["validate_query_fasta", "makeblastdb", "run_blast", "run_alignment"]
+
+rule clean:
+    shell:
+        "rm -rf results/*"

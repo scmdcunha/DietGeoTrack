@@ -6,3 +6,4 @@ scripts/__pycache__/
 config.yaml
 taxdump.tar.gz
 tests/__pycache__/
+bin/

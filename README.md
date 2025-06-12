@@ -77,6 +77,7 @@ snakemake --cores 4 --configfile config.yaml
 
 Before running the pipeline, configure the `config.yaml` file with the following parameters:
 
+- **alignment_tool**: Choose the alignment tool to use ("blast" or "vsearch").
 - **reference_fasta**: Path to the FASTA file with reference sequences (e.g., arthropod COI sequences).
 - **blast_query**: Path to the FASTA file containing your query sequences.
 - **blast_threads**: Number of CPU threads to use for BLAST.
@@ -94,12 +95,16 @@ Before running the pipeline, configure the `config.yaml` file with the following
 - **cache_dir**: Directory to cache API responses.
 - **occ_threads**: Number of threads for GBIF occurrence queries.
 - **w_identity**, **w_distance**, **w_date**: Weights for identity, geographic distance, and occurrence date used in the final scoring. Must sum to 1.
+- **half_life_distance**: Half-life distance in kilometers for the exponential decay function applied to geographic distance scoring. This means the distance score decreases by half every half_life_distance km. For example, if set to 20, the score halves every 20 km away from the reference point.
+- **half_life_date**: Half-life time in years for the exponential decay applied to occurrence date scoring. The score halves every half_life_date years. For example, if set to 5, occurrences 5 years older than the reference year will have their score halved.
 
 ---
 
 ## Example `config.yaml`
 
 ```yaml
+alignment_tool: blast
+
 reference_fasta: data/arthropoda.fasta
 blast_query: data/queries.fasta
 
@@ -108,8 +113,8 @@ blast_max_targets: 10
 min_identity: 97
 top_hits: 3
 
-ncbi_email: "your_email@example.com"        # Required by NCBI Entrez API
-ncbi_api_key: ""                            # Optional: get your API key at https://www.ncbi.nlm.nih.gov/account/settings/
+ncbi_email: "your_email@example.com"
+ncbi_api_key: ""
 taxonomy_threads: 4
 
 occurrence_column: Species
@@ -118,12 +123,16 @@ ref_lon: -7.6120
 radius: 20
 occ_top_n: 1
 min_year: 2010
+
 cache_dir: cache
 occ_threads: 4
 
 w_identity: 0.5
 w_distance: 0.3
 w_date: 0.2
+
+half_life_distance: 20
+half_life_date: 5
 ```
 
 ---

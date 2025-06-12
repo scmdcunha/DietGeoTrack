@@ -36,6 +36,7 @@ rule create_dirs:
         os.makedirs("results/taxonomy", exist_ok=True)
         os.makedirs("results/occurrences", exist_ok=True)
         os.makedirs("results/scores", exist_ok=True)
+        os.makedirs("results/cache", exist_ok=True)
 
 rule validate_reference_fasta:
     input:
@@ -59,7 +60,8 @@ rule validate_query_fasta:
 
 rule validate_reference_upper:
     input:
-        fasta=config["reference_fasta"]
+        fasta=config["reference_fasta"],
+        check="results/db/reference_checked.ok"
     output:
         "results/db/reference_upper.fasta"
     params:
@@ -69,7 +71,8 @@ rule validate_reference_upper:
 
 rule validate_query_upper:
     input:
-        fasta=config["blast_query"]
+        fasta=config["blast_query"],
+        check="results/blast/query_checked.ok"
     output:
         "results/db/query_upper.fasta"
     params:
@@ -121,7 +124,7 @@ rule run_vsearch:
     output:
         "results/vsearch/vsearch_output.tsv"
     params:
-        identity=lambda wildcards, config=config: float(config["min_identity"]) / 100.0
+        identity=str(float(config["min_identity"]) / 100.0)
     shell:
         """
         vsearch --usearch_global {input.query} \
@@ -152,7 +155,7 @@ rule top_hits:
         top_n=config["top_hits"]  # Number of top hits to keep per query
     shell:
         # Select top N hits per query with highest percent identity (column 3)
-        "awk '{{print $1}}' {input} | sort -u | while read id; do "
+        "awk -F '\t' '{{print $1}}' {input} | sort -u | while read id; do "
         "grep -w \"$id\" {input} | sort -k3,3nr | head -n {params.top_n}; done > {output}"
 
 rule fetch_taxonomy:
@@ -164,11 +167,11 @@ rule fetch_taxonomy:
         script="scripts/fetch_taxonomy_ncbi.py",
         email=config["ncbi_email"],
         api_key_arg=f"--api_key {config['ncbi_api_key']}" if config.get("ncbi_api_key", "") else "",
-        threads=config["taxonomy_threads"]
+    threads: 1
     shell:
         # Run the taxonomy fetching script to retrieve taxonomic info for BLAST hits
         "micromamba run -n metabarcoding python {params.script} --input {input} --output {output} "
-        "--email {params.email} {params.api_key_arg} --threads {params.threads}"
+        "--email {params.email} {params.api_key_arg} --threads {threads}"
 
 rule fetch_occurrences:
     input:
@@ -178,21 +181,21 @@ rule fetch_occurrences:
         no_occ="results/occurrences/no_occurrences.csv"
     params:
         script="scripts/gbif_occurrences.py",
-        column=config["occurrence_column"],
+        column="Species",
         lat=config["ref_lat"],
         lon=config["ref_lon"],
         radius=config["radius"],
         top_n=config["occ_top_n"],
         min_year_arg=f"--min_year {config['min_year']}" if config.get("min_year", "") else "",
-        cache=config["cache_dir"],
-        threads=config["occ_threads"]
+        cache="results/cache",
+    threads: 1
     shell:
         # Run occurrences fetching script querying GBIF API with parameters
         "micromamba run -n metabarcoding python {params.script} --input_csv {input} --column {params.column} "
         "--output_csv {output.gbif} --no_occurrences_csv {output.no_occ} "
         "--ref_lat {params.lat} --ref_lon {params.lon} --radius {params.radius} "
         "--top_n {params.top_n} {params.min_year_arg} "
-        "--cache_dir {params.cache} --threads {params.threads}"
+        "--cache_dir {params.cache} --threads {threads}"
 
 # ----------------------------
 # Postprocessing rules (score calculation, cleaning)
@@ -225,15 +228,8 @@ rule calculate_score:
         --w_date {params.w_date} \
         """
 
-# ----------------------------
-# Conditional rule activation (BLAST or VSEARCH)
-# ----------------------------
 
-if config["alignment_tool"] == "vsearch":
-    use_rules = ["validate_reference_upper", "validate_query_upper", "run_vsearch", "run_alignment"]
-else:
-    use_rules = ["validate_query_fasta", "makeblastdb", "run_blast", "run_alignment"]
 
 rule clean:
-    shell:
-        "rm -rf results/*"
+    message: "This will delete all results. Proceed with caution."
+    shell: "rm -rf results/*"

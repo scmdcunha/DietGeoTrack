@@ -21,7 +21,7 @@ python calculate_score.py \
     --blast blast_results.tsv \
     --taxonomy taxonomy.csv \
     --gbif gbif_occurrences.csv \
-    --output final_scores.tsv \
+    --output final_scores.csv \
     --missing missing_data.tsv
 """
 
@@ -118,9 +118,9 @@ def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3, half_l
 
     df['EventDate'] = df['EventDate'].apply(parse_date_safe)
     today = datetime.now()
-    df['DaysSince'] = df['EventDate'].apply(lambda x: (today - x).days if pd.notnull(x) else pd.NA)
-
+    df['DaysSince'] = df['EventDate'].apply(lambda x: (today - x).days if pd.notnull(x) else np.nan)
     complete_rows = df[df['Distance_km'].notnull() & df['DaysSince'].notnull()].copy()
+    complete_rows['DaysSince'] = complete_rows['DaysSince'].astype(float)
     incomplete_rows = df[~(df['Distance_km'].notnull() & df['DaysSince'].notnull())].copy()
 
     # Calculate lambda values from half-life parameters

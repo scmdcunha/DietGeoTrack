@@ -1,30 +1,37 @@
 #!/usr/bin/env python3
 """
-This script calculates a validation score for taxonomic identification results
-by integrating BLAST identity percentages, geographic distances from GBIF occurrence data,
-and temporal data (dates of occurrence records).
+This script calculates a validation score for taxonomic identifications by integrating:
+- BLAST identity percentages,
+- Geographic distances from GBIF occurrence data,
+- Temporal information (dates of occurrence records).
 
-The script processes three input files:
-- A BLAST output file (TSV format) containing sequence alignment results.
-- A taxonomy file (CSV format) with taxonomic information linked to query and accession IDs.
-- A GBIF occurrences file (CSV format) with species occurrence data including geographic distance
-  and event dates.
+It processes three input files:
+- A BLAST output file (TSV format) with sequence alignment results.
+- A taxonomy file (CSV format) linking query and accession IDs to taxonomic info.
+- A GBIF occurrences file (CSV format) with species occurrences, geographic distances, and dates.
 
-The script merges these datasets, computes a combined score weighting identity, distance, and date,
-and outputs two files:
-- A scored results file with the final validation scores.
-- A file containing rows where key data (distance or date) was missing.
+The output consists of:
+- A scored results file with a combined validation score.
+- A file containing rows with missing distance or date information.
 
-Weights for each component of the score can be customized via command line arguments.
+The weights for each score component (identity, distance, date) can be customized via CLI arguments.
 
-Usage example:
-python calculate_score.py --blast blast_results.tsv --taxonomy taxonomy.csv --gbif gbif_occurrences.csv --output final_scores.csv --missing missing_data.csv
+Usage:
+python calculate_score.py \
+    --blast blast_results.tsv \
+    --taxonomy taxonomy.csv \
+    --gbif gbif_occurrences.csv \
+    --output final_scores.tsv \
+    --missing missing_data.tsv
 """
+
 
 import pandas as pd
 import argparse
 from datetime import datetime
 from dateutil import parser as dateparser
+import numpy as np
+import math
 
 def load_data(blast_file, taxonomy_file, gbif_file):
     """
@@ -61,21 +68,27 @@ def load_data(blast_file, taxonomy_file, gbif_file):
 
 def preprocess_data(blast_df, taxonomy_df, gbif_df):
     """
-    Merge the BLAST, taxonomy, and GBIF data into a single DataFrame.
+    Merges BLAST, taxonomy, and GBIF occurrence data into a unified DataFrame.
 
     Parameters:
-    blast_df (DataFrame): BLAST results.
-    taxonomy_df (DataFrame): Taxonomy information.
-    gbif_df (DataFrame): GBIF occurrences.
+    - blast_df (pd.DataFrame): DataFrame containing BLAST results.
+    - taxonomy_df (pd.DataFrame): DataFrame with taxonomy annotations.
+    - gbif_df (pd.DataFrame): DataFrame with GBIF occurrences, distances, and dates.
 
     Returns:
-    DataFrame: Merged data containing all relevant fields.
+    - pd.DataFrame: Merged DataFrame with all relevant fields.
     """
+
     merged = pd.merge(blast_df, taxonomy_df, how='left', on=['Query_ID', 'Accession'])
     merged = pd.merge(merged, gbif_df, how='left', on='Species')
     return merged
 
-def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3):
+def half_life_to_lambda(half_life):
+    if half_life <= 0:
+        raise ValueError("Half-life must be positive")
+    return math.log(2) / half_life
+
+def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3, half_life_distance=20, half_life_date=1825):
     """
     Calculate a combined validation score based on percent identity,
     geographic distance, and date of occurrence.
@@ -110,13 +123,24 @@ def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3):
     complete_rows = df[df['Distance_km'].notnull() & df['DaysSince'].notnull()].copy()
     incomplete_rows = df[~(df['Distance_km'].notnull() & df['DaysSince'].notnull())].copy()
 
-    complete_rows['identity_score'] = complete_rows['Percent Identity'] / 100
-    complete_rows['distance_score'] = 1 - (complete_rows['Distance_km'] / complete_rows['Distance_km'].max())
-    complete_rows['date_score'] = 1 - (complete_rows['DaysSince'] / complete_rows['DaysSince'].max())
+    # Calculate lambda values from half-life parameters
+    lambda_distance = half_life_to_lambda(half_life_distance)
+    lambda_date = half_life_to_lambda(half_life_date)
 
-    complete_rows['distance_score'] = complete_rows['distance_score'].fillna(0)
-    complete_rows['date_score'] = complete_rows['date_score'].fillna(0)
+    # Identity Score: 0–1
+    complete_rows['identity_score'] = complete_rows['Percent Identity'].apply(
+        lambda x: x / 100 if x > 1 else x
+    )
 
+    # Distance Score with exponential decay
+    complete_rows['distance_score'] = np.exp(-lambda_distance * complete_rows['Distance_km'])
+    complete_rows['distance_score'] = complete_rows['distance_score'].clip(lower=0.001)
+
+    # Date Score with exponential decay
+    complete_rows['date_score'] = np.exp(-lambda_date * complete_rows['DaysSince'])
+    complete_rows['date_score'] = complete_rows['date_score'].clip(lower=0.001)
+
+    # Final weighted score
     complete_rows['Score'] = (
         complete_rows['identity_score'] * w_identity
         + complete_rows['distance_score'] * w_distance
@@ -127,6 +151,7 @@ def calculate_score(df, w_identity=1 / 3, w_distance=1 / 3, w_date=1 / 3):
     complete_rows['Score'] = complete_rows['Score'].round(3)
 
     return complete_rows, incomplete_rows
+
 
 def save_output(scored_df, missing_df, scored_file, missing_file):
     """
@@ -166,6 +191,18 @@ def main():
     parser.add_argument("--w_identity", type=float, default=1 / 3, help="Weight for identity score (default 1/3)")
     parser.add_argument("--w_distance", type=float, default=1 / 3, help="Weight for distance score (default 1/3)")
     parser.add_argument("--w_date", type=float, default=1 / 3, help="Weight for date score (default 1/3)")
+    parser.add_argument(
+        "--half_life_distance",
+        type=float,
+        default=20,
+        help="Distance at which score decays to half (km). Default 20 km."
+    )
+    parser.add_argument(
+        "--half_life_date",
+        type=float,
+        default=1825,
+        help="Time in days at which score decays to half. Default 1825 days (5 years)."
+    )
 
     args = parser.parse_args()
 
@@ -175,8 +212,11 @@ def main():
         merged_df,
         w_identity=args.w_identity,
         w_distance=args.w_distance,
-        w_date=args.w_date
+        w_date=args.w_date,
+        half_life_distance=args.half_life_distance,
+        half_life_date=args.half_life_date
     )
+
     save_output(scored_df, missing_df, args.output, args.missing)
 
 if __name__ == "__main__":

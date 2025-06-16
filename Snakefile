@@ -124,12 +124,16 @@ rule run_vsearch:
     output:
         "results/vsearch/vsearch_output.tsv"
     params:
-        identity=str(float(config["min_identity"]) / 100.0)
+        identity=str(float(config["min_identity"]) / 100.0),
+        max_targets=config["vsearch_max_targets"],
+        threads=config["vsearch_threads"]
     shell:
         """
         vsearch --usearch_global {input.query} \
             --db {input.reference} \
             --id {params.identity} \
+            --maxhits {params.max_targets} \
+            --threads {params.threads} \
             --blast6out {output}
         """
 
@@ -198,7 +202,7 @@ rule fetch_occurrences:
         "--cache_dir {params.cache} --threads {threads}"
 
 # ----------------------------
-# Postprocessing rules (score calculation, cleaning)
+# Postprocessing rules (score calculation)
 # ----------------------------
 
 rule calculate_score:
@@ -214,6 +218,8 @@ rule calculate_score:
         w_identity=config["w_identity"],
         w_distance=config["w_distance"],
         w_date=config["w_date"],
+        half_life_distance=config["half_life_distance"],
+        half_life_date=config["half_life_date"]
     shell:
         # Calculate combined score integrating identity, distance, and date using the scoring script
         """
@@ -226,10 +232,14 @@ rule calculate_score:
         --w_identity {params.w_identity} \
         --w_distance {params.w_distance} \
         --w_date {params.w_date} \
+        --half_life_distance {params.half_life_distance} \
+        --half_life_date {params.half_life_date}
         """
 
-
+# ----------------------------
+# Cleaning rule
+# ----------------------------
 
 rule clean:
-    message: "This will delete all results. Proceed with caution."
+    message: "This will delete all results."
     shell: "rm -rf results/*"

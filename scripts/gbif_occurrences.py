@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from osgeo import ogr, osr
 from math import radians, cos
 from dateutil import parser as dateparser
+import time
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """
@@ -117,7 +118,7 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
             if offset + limit >= r.json().get("count", 0):
                 break
             offset += limit
-            time.sleep(0.2)  # Avoid overloading the API
+            time.sleep(0.5)  # Avoid overloading the API
 
         with open(cache_path, "w") as f:
             json.dump(occurrences, f)
@@ -230,6 +231,12 @@ def main(args):
             except Exception as e:
                 print(f"[{i}/{len(to_process)}] Error with {sp}: {e}")
                 no_hits.append({"species": sp})
+
+            # Save progress each 10 species
+            if i % 10 == 0 or i == len(to_process):
+                pd.DataFrame(results).to_csv(args.output_csv, index=False)
+                pd.DataFrame(no_hits).drop_duplicates(subset=["species"]).to_csv(args.no_occurrences_csv, index=False)
+                print(f"Progress saved after {i} species.")
 
     # Save everything again (including previous results)
     pd.DataFrame(results).to_csv(args.output_csv, index=False)

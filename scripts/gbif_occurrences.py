@@ -23,8 +23,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from osgeo import ogr, osr
 from math import radians, cos
 from dateutil import parser as dateparser
-import time
-import re
 from tqdm import tqdm
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
@@ -237,7 +235,9 @@ def main(args):
             # Save progress each 10 species
             if i % 10 == 0 or i == len(to_process):
                 pd.DataFrame(results).to_csv(args.output_csv, index=False)
-                pd.DataFrame(no_hits).drop_duplicates(subset=["species"]).to_csv(args.no_occurrences_csv, index=False)
+                pd.DataFrame(no_hits) \
+                    .drop_duplicates(subset=["species"]) \
+                    .to_csv(args.no_occurrences_csv, index=False)
                 tqdm.write(f"Progress saved after {i} species.")
 
     # Save everything again (including previous results)

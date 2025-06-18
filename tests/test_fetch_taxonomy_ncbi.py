@@ -1,24 +1,18 @@
 from unittest.mock import patch, MagicMock
 from scripts.fetch_taxonomy_ncbi import fetch_taxonomy_wrapper
 
+@patch("scripts.fetch_taxonomy_ncbi.get_organism_name", return_value="Eratigena saeva")
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_taxid_translator")
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_rank")
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_lineage")
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_name_translator")
-@patch("scripts.fetch_taxonomy_ncbi.Entrez.efetch")
 def test_fetch_taxonomy_wrapper(
-    mock_entrez_efetch,
     mock_get_name_translator,
     mock_get_lineage,
     mock_get_rank,
-    mock_get_translator
+    mock_get_translator,
+    mock_get_organism_name
 ):
-
-    # Mock the GenBank record
-    record = MagicMock()
-    record.annotations = {"organism": "Eratigena saeva"}
-    mock_entrez_efetch.return_value = MagicMock()
-
     # Mock taxonomic info
     mock_get_name_translator.return_value = {"Eratigena saeva": [12345]}
     mock_get_lineage.return_value = [2, 3, 4]

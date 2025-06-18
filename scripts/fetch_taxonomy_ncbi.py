@@ -22,6 +22,7 @@ from threading import Lock
 from tqdm import tqdm
 import sys
 import time
+from functools import lru_cache
 
 # Initialize NCBI Taxa
 ncbi = NCBITaxa()
@@ -43,6 +44,19 @@ def read_accession_query_pairs(file_path):
     pairs = df.drop_duplicates(subset=["qseqid", "sseqid"])[["qseqid", "sseqid"]]
     return pairs.values.tolist()  # returns list of [qseqid, sseqid]
 
+@lru_cache(maxsize=10000)
+def get_organism_name(accession_id, email, api_key):
+    Entrez.email = email
+    if api_key:
+        Entrez.api_key = api_key
+    handle = Entrez.esummary(db="nucleotide", id=accession_id, retmode="xml")
+    summary = Entrez.read(handle)
+    handle.close()
+    if "Title" in summary[0]:
+        title = summary[0]["Title"]
+        if "[" in title:
+            return title.split("[")[-1].strip("]")
+    return "Unknown"
 
 def fetch_taxonomy_wrapper(args):
     """
@@ -59,17 +73,8 @@ def fetch_taxonomy_wrapper(args):
         or dict with error info if failed.
     """
     query_id, accession_id, email, api_key = args
-    Entrez.email = email
-    if api_key:
-        Entrez.api_key = api_key
     try:
-        handle = Entrez.efetch(db="nucleotide", id=accession_id, rettype="gb", retmode="text")
-        record = SeqIO.read(handle, "genbank")
-        handle.close()
-
-        time.sleep(0.12)  # ~8.3 requests/second
-
-        organism = record.annotations.get("organism", "Unknown")
+        organism = get_organism_name(accession_id, email, api_key)
         if organism == "Unknown":
             return None
 
@@ -83,19 +88,25 @@ def fetch_taxonomy_wrapper(args):
         names = ncbi.get_taxid_translator(lineage)
         ranks = ncbi.get_rank(lineage)
 
-        taxonomy = {"Query ID": query_id, "Accession ID": accession_id}
-        # Add ranks if they exist
+        taxonomy = {
+            "Query ID": query_id,
+            "Accession ID": accession_id,
+            "Order": "NA",
+            "Family": "NA",
+            "Genus": "NA",
+            "Species": organism
+        }
+
         for taxid in lineage:
             rank = ranks.get(taxid)
             if rank in ["order", "family", "genus"]:
                 taxonomy[rank.capitalize()] = names.get(taxid, "NA")
 
-        taxonomy["Species"] = organism
         return taxonomy
 
     except Exception as e:
         print(f"[ERROR] Query: {query_id} | Accession: {accession_id} | {e}")
-        time.sleep(0.5)
+        time.sleep(0.3)
         return {"error": True, "query_id": query_id, "accession_id": accession_id, "message": str(e)}
 
 def save_to_csv(results, output_file):
@@ -128,6 +139,12 @@ def main(input_file, output_file, email, api_key=None, threads=cpu_count()):
         api_key (str, optional): NCBI API key.
         threads (int): Number of parallel processes.
     """
+    # Log about use of API key
+    if api_key:
+        print(f"[INFO] The following API key was detected: {api_key}")
+    else:
+        print("[INFO] No API key detected. Limit is 3 requests per second.")
+
     pairs = read_accession_query_pairs(input_file)
     print(f"Fetched {len(pairs)} (query, accession) pairs.")
 

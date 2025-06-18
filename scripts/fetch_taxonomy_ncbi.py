@@ -11,7 +11,7 @@ Supports parallel processing and respects NCBI request rate limits.
 Requires: Biopython, ete3, pandas, tqdm
 """
 
-from Bio import Entrez, SeqIO
+from Bio import Entrez
 from ete3 import NCBITaxa
 from pathlib import Path
 import pandas as pd

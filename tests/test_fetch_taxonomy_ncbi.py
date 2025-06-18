@@ -6,9 +6,7 @@ from scripts.fetch_taxonomy_ncbi import fetch_taxonomy_wrapper
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_lineage")
 @patch("scripts.fetch_taxonomy_ncbi.ncbi.get_name_translator")
 @patch("scripts.fetch_taxonomy_ncbi.Entrez.efetch")
-@patch("scripts.fetch_taxonomy_ncbi.SeqIO.read")
 def test_fetch_taxonomy_wrapper(
-    mock_seqio_read,
     mock_entrez_efetch,
     mock_get_name_translator,
     mock_get_lineage,
@@ -19,7 +17,6 @@ def test_fetch_taxonomy_wrapper(
     # Mock the GenBank record
     record = MagicMock()
     record.annotations = {"organism": "Eratigena saeva"}
-    mock_seqio_read.return_value = record
     mock_entrez_efetch.return_value = MagicMock()
 
     # Mock taxonomic info

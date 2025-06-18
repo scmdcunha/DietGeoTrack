@@ -93,36 +93,56 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
         with open(cache_path) as f:
             occurrences = json.load(f)
     else:
-        min_lat, max_lat, min_lon, max_lon = bbox_from_radius(ref_lat, ref_lon, radius_km)
-        base_url = "https://api.gbif.org/v1/occurrence/search"
-        limit, offset = 300, 0
+        # 1. Verifies the number of occurrences with coordinates
+        count_url = "https://api.gbif.org/v1/occurrence/search"
+        count_params = {
+            "scientificName": species,
+            "hasCoordinate": "true",
+            "limit": 0
+        }
+        try:
+            count_resp = requests.get(count_url, params=count_params)
+            count = count_resp.json().get("count", 0)
+        except Exception as e:
+            tqdm.write(f"[ERROR] Failed to get occurrence count for {species}: {e}")
+            return None, species
+
+        # 2. Defines if use adaptive search
+        use_adaptive = count > 5000
+        search_radii = [5, 10, 20] if use_adaptive else [radius_km]
         occurrences = []
 
-        # Paginate through GBIF API results
-        while True:
-            params = {
-                "scientificName": species,
-                "hasCoordinate": "true",
-                "decimalLatitude": f"{min_lat},{max_lat}",
-                "decimalLongitude": f"{min_lon},{max_lon}",
-                "limit": limit,
-                "offset": offset
-            }
+        # 3. Iterates over radii
+        for radius in search_radii:
+            min_lat, max_lat, min_lon, max_lon = bbox_from_radius(ref_lat, ref_lon, radius)
+            base_url = "https://api.gbif.org/v1/occurrence/search"
+            limit, offset = 300, 0
+            while True:
+                params = {
+                    "scientificName": species,
+                    "hasCoordinate": "true",
+                    "decimalLatitude": f"{min_lat},{max_lat}",
+                    "decimalLongitude": f"{min_lon},{max_lon}",
+                    "limit": limit,
+                    "offset": offset
+                }
+                tqdm.write(f"[DEBUG] Requesting {species} radius={radius}km (offset={offset})")
+                r = requests.get(base_url, params=params)
+                if r.status_code != 200:
+                    tqdm.write(f"[Error] GBIF API failed for {species} radius={radius}: {r.status_code} - {r.text}")
+                    return None, species
+                results = r.json().get("results", [])
+                occurrences.extend(results)
 
-            tqdm.write(f"[DEBUG] Requesting {species} (offset={offset})")
-            r = requests.get(base_url, params=params)
-            if r.status_code != 200:
-                tqdm.write(f"[Error] GBIF API call failed for {species} (status {r.status_code})")
-                return None, species
+                if offset + limit >= r.json().get("count", 0):
+                    break
+                offset += limit
+                time.sleep(0.2)
 
-            results = r.json().get("results", [])
-            occurrences.extend(results)
-
-            if offset + limit >= r.json().get("count", 0):
+            if occurrences:  # If found occurrences in this radius, don't increase more
                 break
-            offset += limit
-            time.sleep(0.5)  # Avoid overloading the API
 
+        # Save for cache even if no results
         with open(cache_path, "w") as f:
             json.dump(occurrences, f)
 

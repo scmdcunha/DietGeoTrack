@@ -218,7 +218,7 @@ def main(args):
             executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir, args.top_n, args.min_year): sp
             for sp in to_process
         }
-        for i, future in enumerate(tqdm(as_completed(futures), total=len(futures),desc="Processing species",unit="species"),start=1):
+        for i, future in enumerate(tqdm(as_completed(futures), total=len(futures), desc="Processing species", unit="species"), start=1):
             sp = futures[future]
             try:
                 res, no_hit = future.result()

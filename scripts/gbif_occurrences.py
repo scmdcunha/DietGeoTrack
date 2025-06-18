@@ -24,6 +24,8 @@ from osgeo import ogr, osr
 from math import radians, cos
 from dateutil import parser as dateparser
 import time
+import re
+from tqdm import tqdm
 
 def calculate_distance_gdal(lat1, lon1, lat2, lon2):
     """
@@ -74,7 +76,7 @@ def bbox_from_radius(lat, lon, radius_km):
 def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min_year=None):
     """
     Searches the GBIF API for occurrences of a given species within a specified radius,
-    and returns the closest one to the reference point.
+    and returns the closest ones to the reference point.
 
     Parameters:
         species: Scientific name of the species.
@@ -82,8 +84,10 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
         radius_km: Search radius in kilometers.
         cache_dir: Path to directory where JSON response will be cached.
         top_n: Number of closest occurrences to return.
+        min_year: Minimum year of occurrence to consider (optional).
+
     Returns:
-        A dictionary with metadata of the closest occurrence, or None if not found.
+        A list of dictionaries with metadata of the closest occurrences, or None if not found.
         Also returns the species name if no occurrence was found.
     """
     cache_path = Path(cache_dir) / f"{species.replace(' ', '_')}.json"
@@ -107,9 +111,10 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
                 "offset": offset
             }
 
+            tqdm.write(f"[DEBUG] Requesting {species} (offset={offset})")
             r = requests.get(base_url, params=params)
             if r.status_code != 200:
-                print(f"[Error] GBIF API call failed for {species} (status {r.status_code})")
+                tqdm.write(f"[Error] GBIF API call failed for {species} (status {r.status_code})")
                 return None, species
 
             results = r.json().get("results", [])
@@ -142,7 +147,7 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
     if not occurrences:
         return None, species
 
-    # Identify closest occurrence to reference point
+    # Compute distances and filter by radius
     occurrences_with_distance = []
     for occ in occurrences:
         lat = occ.get("decimalLatitude")
@@ -160,23 +165,20 @@ def get_closest_gbif(species, ref_lat, ref_lon, radius_km, cache_dir, top_n, min
     sorted_occs = sorted(occurrences_with_distance, key=lambda x: x["distance_km"])
     closest_occurrences = sorted_occs[:top_n]
 
-    if closest_occurrences:
-        formatted = []
-        for occ in closest_occurrences:
-            formatted.append({
-                "species": species,
-                "gbifKey": occ["key"],
-                "lat": occ["decimalLatitude"],
-                "lon": occ["decimalLongitude"],
-                "distance_km": occ["distance_km"],
-                "eventDate": occ.get("eventDate", ""),
-                "country": occ.get("country", ""),
-                "locality": occ.get("locality", ""),
-                "datasetKey": occ.get("datasetKey", "")
-            })
-        return formatted, None
-    else:
-        return None, species
+    formatted = []
+    for occ in closest_occurrences:
+        formatted.append({
+            "species": species,
+            "gbifKey": occ["key"],
+            "lat": occ["decimalLatitude"],
+            "lon": occ["decimalLongitude"],
+            "distance_km": occ["distance_km"],
+            "eventDate": occ.get("eventDate", ""),
+            "country": occ.get("country", ""),
+            "locality": occ.get("locality", ""),
+            "datasetKey": occ.get("datasetKey", "")
+        })
+    return formatted, None
 
 def main(args):
     """
@@ -218,25 +220,25 @@ def main(args):
             executor.submit(get_closest_gbif, sp, args.ref_lat, args.ref_lon, args.radius, args.cache_dir, args.top_n, args.min_year): sp
             for sp in to_process
         }
-        for i, future in enumerate(as_completed(futures), 1):
+        for i, future in enumerate(tqdm(as_completed(futures),total=len(futures),desc="Processing species",unit="species"),start=1):
             sp = futures[future]
             try:
                 res, no_hit = future.result()
                 if res:
                     results.extend(res)
-                    print(f"[{i}/{len(to_process)}] {sp}")
+                    tqdm.write(f"[{i}/{len(to_process)}] {sp}")
                 elif no_hit:
                     no_hits.append({"species": no_hit})
-                    print(f"[{i}/{len(to_process)}] No occurrence: {sp}")
+                    tqdm.write(f"[{i}/{len(to_process)}] No occurrence: {sp}")
             except Exception as e:
-                print(f"[{i}/{len(to_process)}] Error with {sp}: {e}")
+                tqdm.write(f"[{i}/{len(to_process)}] Error with {sp}: {e}")
                 no_hits.append({"species": sp})
 
             # Save progress each 10 species
             if i % 10 == 0 or i == len(to_process):
                 pd.DataFrame(results).to_csv(args.output_csv, index=False)
                 pd.DataFrame(no_hits).drop_duplicates(subset=["species"]).to_csv(args.no_occurrences_csv, index=False)
-                print(f"Progress saved after {i} species.")
+                tqdm.write(f"Progress saved after {i} species.")
 
     # Save everything again (including previous results)
     pd.DataFrame(results).to_csv(args.output_csv, index=False)

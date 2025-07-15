@@ -3,19 +3,6 @@
 
 Diet Geo Track is a bioinformatics pipeline designed to identify arthropods (or other prey) consumed by animals through the analysis of metabarcoding sequence data, such as those obtained from guano samples or similar environmental DNA sources. The main goal is to process and analyze Next-Generation Sequencing (NGS) data to assign taxonomic identities to query sequences and then validate these identifications geographically using occurrence data from GBIF (Global Biodiversity Information Facility). This ensures the taxonomic assignments make ecological and biogeographical sense.
 
----
-
-
----
-
-### Flowchart
-
-
-```markdown
-
-The pipeline follows a modular structure, illustrated below:
-
-
 ## Project Overview
 
 - **Input:** FASTA sequences obtained by metabarcoding or similar NGS approaches from dietary samples.
@@ -37,6 +24,7 @@ The pipeline follows a modular structure, illustrated below:
 ## Requirements
 
 - Python 3.8+
+- BLAST+ and VSEARCH installed in your environment
 - Docker installed (if you want to use containerization)
 
 ## Installation and Setup
@@ -140,30 +128,6 @@ half_life_date: 5
 ```
 
 ---
-
-## Generated Output Files
-
-After running the pipeline, the following files are produced under the `results/` directory:
-
-```bash
-results/
-├── alignment/
-│   ├── alignment_output.tsv        # Filtered alignment results (with percent identity threshold)
-│   └── top_hits.tsv                # Top N hits per query (e.g., best 3 hits)
-├── blast/
-│   └── blast_output.tsv            # Raw BLAST output 
-├── taxonomy/
-│   └── taxonomy.csv                # Taxonomic classification (Order, Family, Genus, Species)
-├── occurrences/
-│   ├── occurrences.csv             # Valid GBIF occurrences with coordinates and date
-│   └── no_occurrences.csv          # Species with no GBIF occurrences found
-├── scores/
-│   ├── final_scores.csv            # Final results with query ID, taxon, % identity, distance, date, and composite score
-│   └── missing_data.csv            # Hits with insufficient data for scoring (e.g., missing date or location)
-
-
----
-
 
 ## Additional Scripts
 

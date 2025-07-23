@@ -142,29 +142,17 @@ After running the pipeline, the following files are produced under the `results/
 results/
 
 ├── alignment/
-
-│ ├── alignment_output.tsv # Filtered alignment results (with percent identity threshold)
-
+│ ├── alignment_output.tsv # Filtered alignment results
 │ └── top_hits.tsv # Top N hits per query (e.g., best 3 hits)
-
 ├── blast/
-
 │ └── blast_output.tsv # Raw BLAST output
-
 ├── taxonomy/
-
 │ └── taxonomy.csv # Taxonomic classification (Order, Family, Genus, Species)
-
 ├── occurrences/
-
 │ ├── occurrences.csv # Valid GBIF occurrences with coordinates and date
-
 │ └── no_occurrences.csv # Species with no GBIF occurrences found
-
 ├── scores/
-
 │ ├── final_scores.csv # Final results with query ID, taxon, % identity, distance, date, and composite score
-
 │ └── missing_data.csv # Hits with insufficient data for scoring (e.g., missing date or location)
 
 ```

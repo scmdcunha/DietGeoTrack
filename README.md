@@ -29,9 +29,37 @@ Below is a visual representation of the Snakemake workflow:
 
 ## Requirements
 
-- Python 3.8+
-- BLAST+ and VSEARCH installed in your environment
-- Docker installed (if you want to use containerization)
+## Requirements
+
+All dependencies are already included in the Docker image, ensuring full reproducibility and compatibility across systems.
+
+> ⚠️ This project was developed and tested in a Linux environment (Pop!_OS).  
+> Manual setup may not work properly on Windows systems due to dependency complexity (e.g., GDAL, ete3, micromamba).
+
+---
+
+## Requirements (only if not using Docker)
+
+If you wish to run the pipeline outside of Docker (not recommended), you must manually install the following:
+
+- **Python 3.10**
+- **Snakemake 9.1.7**
+- **Micromamba** (or **Conda**)
+
+And create an environment with the following packages (installable via `conda` or `micromamba`):
+
+blast=2.13.0
+vsearch=2.22.1
+pandas=2.2.2
+plotly=5.21.0
+folium=0.16.0
+requests=2.31.0
+tqdm=4.66.2
+biopython=1.83
+ete3=3.1.3
+gdal=3.6.2
+
+Make sure this environment is activated before running the pipeline, and that all tools are available in your system `PATH`.
 
 ## Installation and Setup
 

@@ -11,6 +11,12 @@ Diet Geo Track is a bioinformatics pipeline designed to identify arthropods (or 
 - **Geographic validation:** Top hits are compared against GBIF occurrence records to filter improbable identifications based on geographic proximity and occurrence date.
 - **Automation:** The pipeline is managed using Snakemake and containerized with Docker and Micromamba to ensure reproducibility and ease of use.
 
+## Workflow Overview
+
+Below is a visual representation of the Snakemake workflow:
+
+![Snakemake workflow graph](rulegraph.png)
+
 ## Tools and Technologies
 
 - Snakemake

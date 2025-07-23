@@ -32,8 +32,8 @@ Diet Geo Track is a bioinformatics pipeline designed to identify arthropods (or 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/scmdcunha/diet-geo-track.git
-cd diet-geo-track
+git clone https://github.com/scmdcunha/DietGeoTrack.git
+cd DietGeoTrack
 ```
 
 ### 2. Install Docker
@@ -47,7 +47,7 @@ If you do not have Docker installed or are unfamiliar with it, please follow the
 Inside the project directory, build the Docker container with:
 
 ```bash
-docker build -t diet-geo-track .
+docker build -t dietgeotrack .
 ```
 
 ### 4. Run the Docker container
@@ -55,7 +55,7 @@ docker build -t diet-geo-track .
 To start the container and mount the current directory inside it (so you can access files):
 
 ```bash
-docker run -it --rm -v "$(pwd)":/app diet-geo-track bash
+docker run -it --rm -v "$(pwd)":/app dietgeotrack bash
 ```
 
 

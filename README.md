@@ -29,8 +29,6 @@ Below is a visual representation of the Snakemake workflow:
 
 ## Requirements
 
-## Requirements
-
 All dependencies are already included in the Docker image, ensuring full reproducibility and compatibility across systems.
 
 > ⚠️ This project was developed and tested in a Linux environment (Pop!_OS).  
